@@ -423,6 +423,69 @@ async function gerarRespostaIA(leadData, mensagemCliente, proximoCampo, historic
 }
 
 // =============================================================
+//  IA — VISÃO (a IA "enxerga" a imagem enviada pelo cliente)
+// =============================================================
+async function analisarImagem(mediaUrl, leadData = {}) {
+    if (!mediaUrl) return null;
+    try {
+        const contexto = leadData.modeloEscolhido
+            ? `O cliente já escolheu o produto ${leadData.modeloEscolhido}.`
+            : 'Ainda estamos no começo do atendimento.';
+        const instrucao = `Você é atendente da Imperial Bonés (bonés e chapéus personalizados). O cliente enviou esta imagem pelo WhatsApp. ${contexto}
+Descreva de forma curta e útil para o atendimento, em 1 a 2 frases, tom natural e SEM markdown:
+- O que é: logo/arte da marca, foto de um boné de referência, print de exemplo, documento, ou outra coisa.
+- Elementos visuais relevantes: texto/nome que aparece, símbolos, cores predominantes, estilo.
+- Se for uma logo/arte, sugira brevemente qual técnica combina (silk 3D, bordado 3D, sublimação, DTF ou patch de couro) e por quê.
+Não invente nada que não dê para ver. Se a imagem não tiver relação com bonés/personalização, diga isso claramente.`;
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: instrucao },
+                    { type: 'image_url', image_url: { url: mediaUrl } }
+                ]
+            }],
+            max_tokens: 300,
+            temperature: 0.4
+        });
+        return completion.choices[0].message.content.trim();
+    } catch (e) {
+        console.error('❌ Erro ao analisar imagem (visão):', e.message);
+        return null;
+    }
+}
+
+// Transforma a análise da imagem numa resposta curta e natural, referenciando a arte,
+// e faz a transição para a escolha da técnica.
+async function gerarAckImagem(leadData, descImg, historicoRecente = []) {
+    const fallback = descImg
+        ? 'Recebi sua arte! Vou te mostrar as técnicas pra gente escolher a ideal pra ela. ✨'
+        : 'Perfeito, recebi sua arte! Vou te mostrar as técnicas. ✨';
+    try {
+        const nome = leadData.nome?.split(' ')[0] || '';
+        const prompt = `O cliente${nome ? ' (' + nome + ')' : ''} acabou de enviar a arte/logo dele. O que você viu na imagem: "${descImg || 'imagem recebida'}".
+Escreva UMA mensagem curta de WhatsApp (1 a 2 frases, tom humano e caloroso, no máximo 1 emoji, sem markdown) que:
+- reconheça a arte citando algo CONCRETO que você viu nela (uma cor, símbolo, o nome, o estilo);
+- diga que vai mostrar as técnicas de personalização pra escolher a ideal pra essa arte.
+Não liste as técnicas agora e não invente detalhes que não estão na descrição.`;
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: 'Você é atendente consultivo da Imperial Bonés. Escrita natural, calorosa e curta, registro de WhatsApp.' },
+                ...historicoRecente,
+                { role: 'user', content: prompt }
+            ],
+            temperature: 0.7
+        });
+        return completion.choices[0].message.content.trim() || fallback;
+    } catch (e) {
+        console.error('❌ Erro no ack de imagem:', e.message);
+        return fallback;
+    }
+}
+
+// =============================================================
 //  PROCESSAMENTO DE IMAGENS
 // =============================================================
 function buscarPorKeywords(texto) {
@@ -600,18 +663,33 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             return;
         }
 
-        // Envio de imagem/documento (arte/logomarca)
+        // Imagem/documento — a IA "enxerga" a imagem (visão) e usa como contexto
         if (tipo === 'image' || tipo === 'document') {
+            const descImg = await analisarImagem(mediaUrl, leadData);
+            if (descImg) {
+                leadData.analiseImagem = descImg;
+                console.log(`🖼️ Visão: ${descImg}`);
+            }
+            // Registra o envio no histórico para dar contexto às próximas respostas
+            leadData.conversationHistory.push({ role: 'user', content: `[O cliente enviou uma imagem]${descImg ? ' — ' + descImg : ''}` });
+
+            // Já escolheu o produto e ainda não a técnica: trata como arte, reconhece de forma
+            // contextual (referenciando o que viu) e leva para a escolha da técnica.
             if (leadData.modeloEscolhido && (!leadData.temArte || leadData.temArte === 'sim') && !leadData.tecnica) {
                 leadData.temArte = 'enviou';
-                await enviarMensagem(chatId, 'Perfeito! Recebi sua arte! ✨\n\nNossa equipe vai analisar e, se precisar de ajustes, a gente te avisa! 👍');
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                await enviarMensagem(chatId, 'Para eu te ajudar a escolher a melhor técnica de personalização para sua arte, vou te mostrar as opções que trabalhamos.');
+                const histAck = leadData.conversationHistory.slice(-30).map(h => ({
+                    role: h.role === 'user' ? 'user' : 'assistant', content: h.content
+                }));
+                const ack = await gerarAckImagem(leadData, descImg, histAck);
+                await enviarMensagensQuebradas(chatId, ack);
+                leadData.conversationHistory.push({ role: 'assistant', content: ack });
                 await new Promise(resolve => setTimeout(resolve, 1000));
-                const extraidoSimulado = { querVerTecnicas: true };
-                await processarPedidoImagens(chatId, extraidoSimulado, leadData, { campo: 'tecnica' });
+                await processarPedidoImagens(chatId, { querVerTecnicas: true }, leadData, { campo: 'tecnica' });
                 return;
             }
+            // Caso contrário, segue o fluxo normal. Texto neutro (não polui a extração);
+            // o conteúdo real da imagem vai como contexto em leadData.analiseImagem.
+            texto = 'Enviei uma imagem.';
         }
 
         // Transcrição de áudio
