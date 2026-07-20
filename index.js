@@ -557,7 +557,7 @@ async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDe
 // =============================================================
 //  PROCESSAMENTO DE MENSAGEM
 // =============================================================
-async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaMimetype, quotedText, nomeContato }) {
+async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, mediaMimetype, quotedText, nomeContato }) {
     if (processandoMensagem.get(chatId)) {
         console.log(`⚠️ Já processando mensagem de ${chatId}. Ignorando.`);
         return;
@@ -616,20 +616,31 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaMimety
 
         // Transcrição de áudio
         if (tipo === 'audio' || tipo === 'ptt') {
-            if (mediaBase64) {
+            // ChatClean entrega o áudio como URL (mediaUrl); alguns formatos mandam base64.
+            let audioBuffer = null;
+            try {
+                if (mediaBase64) {
+                    audioBuffer = Buffer.from(mediaBase64, 'base64');
+                } else if (mediaUrl) {
+                    console.log('⬇️ Baixando áudio da mediaUrl...');
+                    const resp = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30000 });
+                    audioBuffer = Buffer.from(resp.data);
+                }
+            } catch (e) {
+                console.error('❌ Erro ao baixar áudio:', e.message);
+            }
+
+            if (audioBuffer) {
                 try {
                     console.log('🎙️ Áudio recebido, iniciando transcrição...');
-                    const tempFile = path.join(__dirname, `temp_audio_${chatId}.ogg`);
-                    fs.writeFileSync(tempFile, Buffer.from(mediaBase64, 'base64'));
                     const formData = new FormData();
-                    formData.append('file', fs.createReadStream(tempFile), { filename: 'audio.ogg', contentType: 'audio/ogg' });
+                    formData.append('file', audioBuffer, { filename: 'audio.ogg', contentType: mediaMimetype || 'audio/ogg' });
                     formData.append('model', 'whisper-1');
                     const transcription = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, {
                         headers: { ...formData.getHeaders(), Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
                     });
                     texto = transcription.data.text;
                     console.log(`📝 Transcrição: "${texto}"`);
-                    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
                 } catch (e) {
                     console.error('❌ Erro ao transcrever áudio:', e.message);
                     await enviarMensagem(chatId, 'Desculpe, não consegui entender seu áudio. Pode digitar, por favor? ✨');
@@ -945,7 +956,8 @@ function parsePayload(body) {
                 texto:         String(msg.body || msg.text || '').trim(),
                 tipo:          normTipo(msg.type || msg.mediaType),
                 mediaBase64:   msg.mediaBase64 || msg.base64 || null,
-                mediaMimetype: msg.mimetype || null,
+                mediaUrl:      msg.mediaUrl || null,
+                mediaMimetype: msg.mimetype || msg.raw?.Message?.imageMessage?.mimetype || null,
                 quotedText:    msg.quotedMsg?.body || msg.quotedMsg?.text || null,
                 nomeContato:   contato.name || msg.raw?.Info?.PushName || body.contactName || ''
             };
@@ -963,6 +975,7 @@ function parsePayload(body) {
                 texto:         String(body.body || '').trim(),
                 tipo:          normTipo(body.type),
                 mediaBase64:   body.mediaBase64 || body.base64 || null,
+                mediaUrl:      body.mediaUrl || null,
                 mediaMimetype: body.mimetype || null,
                 quotedText:    body.quotedText || null,
                 nomeContato:   body.contactName || body.name || ''
