@@ -40,22 +40,22 @@ metalica-tipo1.jpeg
 metalica-tipo2.jpeg
 ```
 
-## 📂 cores-tecidos/ (1 cartela por tecido)
+## 📂 cores-tecidos/ (1 cartela por tecido — .png)
 
 Nomes batem com as chaves de `TECIDOS_E_CORES` no `data.js`:
 
 ```
-supercap.jpeg
-oxford.jpeg          (opcional — não há página no catálogo Cores & Materiais)
-tela-paranaense.jpeg
-tela-resinada.jpeg
-alfaiataria.jpeg
-brim.jpeg
-camurca.jpeg
-especiais.jpeg       (materiais especiais para aba)
+capa.png             (capa "Cores & Materiais")
+supercap.png
+tela-paranaense.png
+tela-resinada.png
+alfaiataria.png
+brim.png
+camurca.png
+especiais.png        (materiais especiais para aba)
 ```
 
-> Ainda NÃO estão ligadas no código — `TECIDOS_E_CORES` hoje só tem as cores em texto. Para o bot enviar essas cartelas, é preciso adicionar o campo de arquivo em cada tecido e um gatilho no fluxo (ex.: quando o cliente pede a cor).
+> Oxford não tem cartela própria no catálogo (usa cores equivalentes à Tela). Estas imagens ainda NÃO estão ligadas no código — `TECIDOS_E_CORES` só tem as cores em texto. Para o bot enviar as cartelas, adicionar um campo de arquivo em cada tecido + um gatilho no fluxo (ex.: quando o cliente pergunta as cores).
 
 ---
 
