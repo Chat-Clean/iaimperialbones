@@ -74,6 +74,24 @@ function normalizarPhone(phone) {
     return String(phone).replace(/\D/g, '');
 }
 
+// Núcleo canônico de um número BR para COMPARAÇÃO (ignora o 9º dígito de celular).
+// Ex.: 5584994610845 (13) e 558494610845 (12) viram o mesmo núcleo → casam.
+// Usado só na allow-list; o número original é preservado para o envio (ccPush).
+function nucleoNumero(n) {
+    let d = String(n).replace(/\D/g, '');
+    if (d.length === 13 && d.startsWith('55') && d[4] === '9') {
+        d = d.slice(0, 4) + d.slice(5); // remove o 9 logo após o DDD
+    }
+    return d;
+}
+
+// true se o número está na allow-list (tolerante ao 9º dígito). Lista vazia = libera todos.
+function contatoPermitido(numero) {
+    if (!IA_ALLOWED_CONTACTS.length) return true;
+    const alvo = nucleoNumero(numero);
+    return IA_ALLOWED_CONTACTS.some(a => nucleoNumero(a) === alvo);
+}
+
 const dbPath = path.join(__dirname, 'database.json');
 let databaseLeads = { leads: [] };
 try {
@@ -995,8 +1013,8 @@ app.post('/webhook', express.json({ limit: '10mb' }), async (req, res) => {
 
         console.log(`📩 Webhook de ${parsed.chatId} [${parsed.tipo}]: "${parsed.texto || '[mídia]'}"`);
 
-        // Fase de teste: só responde aos números da lista permitida
-        if (IA_ALLOWED_CONTACTS.length && !IA_ALLOWED_CONTACTS.includes(parsed.chatId)) {
+        // Fase de teste: só responde aos números da lista permitida (tolerante ao 9º dígito)
+        if (!contatoPermitido(parsed.chatId)) {
             console.log(`🚫 Contato ${parsed.chatId} fora da lista de teste — ignorado`);
             return;
         }
