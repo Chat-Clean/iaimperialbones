@@ -982,11 +982,14 @@ function parsePayload(body) {
             };
         }
 
-        // --- Formato alternativo simples (testes locais) ---
+        // --- Formato numero_cliente/url_envio (ChatBot "Requisição de API") ---
+        // IGNORADO de propósito: a Imperial usa a API/Webhook (formato `message`) como
+        // fonte ÚNICA. Este formato é o disparo duplicado do ChatBot 114 (node de API) e
+        // chega SEM `fromMe`/`mediaType`, tratando a URL da mídia como texto. Aceitá-lo
+        // duplicaria cada mensagem. Ideal: desativar o node de API no ChatBot 114.
         if (body?.numero_cliente && body?.mensagem_cliente !== undefined) {
-            const phone = normalizarPhone(body.numero_cliente);
-            if (!phone) return null;
-            return { chatId: phone, msgId: null, texto: String(body.mensagem_cliente || '').trim(), tipo: 'text', mediaBase64: null, mediaMimetype: null, quotedText: null, nomeContato: '' };
+            console.log('↩️ Ignorando disparo duplicado do ChatBot (formato numero_cliente) — fonte única é a API/Webhook');
+            return null;
         }
 
         console.log('⚠️ Payload não reconhecido:', JSON.stringify(body, null, 2).slice(0, 800));
