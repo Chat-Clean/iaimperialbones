@@ -107,12 +107,12 @@ INFORMAÇÕES DA EMPRESA:
 
 PRODUTOS:
 - Bonés 6 Gomos / Americano (Snapback): 3 níveis — Básico (Tactel), Essencial (Oxford), Premium (Supercap)
-- Boné Trucker: 3 níveis — Básico (Tactel + tela básica), Intermediário (Oxford + tela resinada), Premium (Supercap + tela resinada)
+- Boné Trucker: LÍDER DE VENDAS entre os bonés! 3 níveis — Básico (Tactel + tela básica), Intermediário (Oxford + tela resinada), Premium (Supercap + tela resinada)
 - Dad Hat: copa baixa sem estrutura, 3 níveis de qualidade
 - CHAPÉUS (linha especial, mín. 30 un. cada):
-  * Chapéu de Proteção (Oxford, botões laterais + cordão) — logo bordada ou emborrachada
+  * Chapéu de Proteção (Oxford, botões laterais + cordão) — LÍDER DE VENDAS entre os chapéus; logo bordada ou emborrachada
   * Bucket Hat — logo bordada ou emborrachada, estilo fashion
-  * Chapéu de Juta — LÍDER DE VENDAS! Logo bordada, emborrachada ou gravada a laser; fita colorida
+  * Chapéu de Juta — logo bordada, emborrachada ou gravada a laser; fita colorida
   * Chapéu de Palha — patch couro sintético (laser ou emborrachado); forro interno pode ser sublimado
   * Chapéu Cata Ovo — viseira ampla, logo bordada ou DTF
 - Viseiras: sem copa, ideal para beach tennis, academia, esportes; logo bordada ou silk

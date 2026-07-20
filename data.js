@@ -61,8 +61,8 @@ const CATALOGO_MODELOS = {
     'IB_TRUCK': {
         nome: 'Trucker',
         codigo: 'IB_TRUCK',
-        descricao: 'Copa estruturada com laterais e traseira em tela para máxima ventilação. Básico (Tactel + tela básica, silk screen), Intermediário (Oxford + tela resinada, silk ou bordado) e Premium (Supercap + tela resinada, silk alto relevo ou bordado alto relevo, carneira brim).',
-        estilo: 'Clássico e despojado com muito conforto.',
+        descricao: 'LÍDER DE VENDAS entre os bonés! Copa estruturada com laterais e traseira em tela para máxima ventilação. Básico (Tactel + tela básica, silk screen), Intermediário (Oxford + tela resinada, silk ou bordado) e Premium (Supercap + tela resinada, silk alto relevo ou bordado alto relevo, carneira brim).',
+        estilo: 'Clássico e despojado com muito conforto — nosso modelo mais vendido.',
         niveis: ['basico', 'essencial', 'premium'],
         precoReferencia: 'A partir de R$ 8,99/unidade (básico, 30-100 un.)',
         arquivo: './assets/modelos/trucker.jpeg',
@@ -81,7 +81,7 @@ const CATALOGO_MODELOS = {
     'IB_CHAP': {
         nome: 'Chapéus',
         codigo: 'IB_CHAP',
-        descricao: 'Linha completa: Chapéu de Proteção (Oxford, botões laterais + cordão), Bucket Hat (fashion), Chapéu de Juta (líder de vendas, fita colorida), Chapéu de Palha (patch couro sintético, forro sublimável) e Cata Ovo (viseira ampla). Todos com mínimo de 30 unidades.',
+        descricao: 'Linha completa: Chapéu de Proteção (Oxford, botões laterais + cordão — LÍDER DE VENDAS entre os chapéus), Bucket Hat (fashion), Chapéu de Juta (fita colorida), Chapéu de Palha (patch couro sintético, forro sublimável) e Cata Ovo (viseira ampla). Todos com mínimo de 30 unidades.',
         estilo: 'Sofisticado, versátil e funcional.',
         precoReferencia: 'Bonés de aba: a partir de R$ 8,99/un | Chapéu de Juta/Agro: a partir de R$ 44,90/un',
         arquivo: './assets/modelos/chapeu.jpeg',
