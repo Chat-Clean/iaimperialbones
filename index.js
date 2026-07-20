@@ -914,18 +914,22 @@ function parsePayload(body) {
             const contato = body.contact || {};
             const msg     = body.message || {};
             if (msg.fromMe) return null; // ignora mensagens enviadas pelo atendente/bot
-            const numero = contato.number || contato.phone || body.number;
+            // Formato real ChatClean: sem contact.number no topo — o telefone vem em
+            // message.raw.Info.SenderAlt (ex.: "558494610845@s.whatsapp.net"). NUNCA usar
+            // Chat/Sender (formato "@lid", que não é telefone).
+            const senderAlt = msg.raw?.Info?.SenderAlt ? String(msg.raw.Info.SenderAlt).split('@')[0] : null;
+            const numero = contato.number || contato.phone || body.number || senderAlt || msg.number;
             const phone  = normalizarPhone(numero);
             if (!phone) return null;
             return {
                 chatId:        phone,
-                msgId:         msg.id ? String(msg.id) : null,
+                msgId:         msg.id ? String(msg.id) : (msg.messageId ? String(msg.messageId) : null),
                 texto:         String(msg.body || msg.text || '').trim(),
-                tipo:          normTipo(msg.type),
+                tipo:          normTipo(msg.type || msg.mediaType),
                 mediaBase64:   msg.mediaBase64 || msg.base64 || null,
                 mediaMimetype: msg.mimetype || null,
                 quotedText:    msg.quotedMsg?.body || msg.quotedMsg?.text || null,
-                nomeContato:   contato.name || body.contactName || ''
+                nomeContato:   contato.name || msg.raw?.Info?.PushName || body.contactName || ''
             };
         }
 
@@ -984,7 +988,7 @@ app.post('/webhook', express.json({ limit: '10mb' }), async (req, res) => {
             }
         }
 
-        console.log('🔍 PAYLOAD RAW:', JSON.stringify(req.body, null, 2).slice(0, 1500));
+        console.log('🔍 PAYLOAD RAW:', JSON.stringify(req.body, null, 2).slice(0, 4000));
 
         const parsed = parsePayload(req.body);
         if (!parsed) return;
