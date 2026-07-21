@@ -32,6 +32,9 @@ const EQUIPE_NUMERO = process.env.EQUIPE_NUMERO || '';
 // Lista de números permitidos (fase de teste). Vazio = responde a todos.
 const IA_ALLOWED_CONTACTS = (process.env.IA_ALLOWED_CONTACTS || '').split(',').map(s => s.trim()).filter(Boolean);
 const PORT          = process.env.PORT          || 3000;
+// Fase 3 — núcleo com tool-calling. Desligado por padrão: o fluxo legado
+// (state machine) continua ativo até validarmos o agente pelos evals.
+const AGENT_MODE    = (process.env.AGENT_MODE || 'false') === 'true';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -55,6 +58,7 @@ const { promptExtracao, promptResposta } = require('./prompts');
 // =============================================================
 const store = require('./store'); // estado das conversas (Redis + fallback em memória)
 const orcamento = require('./orcamento'); // preços reais da tabela (a IA nunca inventa preço)
+const { rodarAgente, estagioDoLead, ETAPAS_FUNIL } = require('./agente'); // Fase 3 — agente + funil
 const processandoMensagem     = new Map();  // lock de processamento (transitório, por instância)
 // O follow-up de reativação agora é DURÁVEL: em vez de um setTimeout em memória (morre no
 // redeploy), guardamos leadData.followUpDueAt (timestamp) e um varredor periódico dispara
@@ -259,42 +263,8 @@ function determinarProximoCampo(leadData) {
     return null;
 }
 
-function recomendarModelos(leadData) {
-    const uso = (leadData.usoEvento || '').toLowerCase();
-    const recomendacoes = [];
-
-    if (uso.includes('beach tennis') || uso.includes('esport') || uso.includes('corrida') || uso.includes('academia') || uso.includes('treino') || uso.includes('fitness') || uso.includes('tenis')) {
-        return ['IB_VIS', 'IB_SNAP', 'IB_TRUCK'];
-    }
-    if (uso.includes('campo') || uso.includes('agro') || uso.includes('fazenda') || uso.includes('rural') || uso.includes('produtor') || uso.includes('sertanejo') || uso.includes('proteção solar') || uso.includes('sol intenso')) {
-        recomendacoes.push('IB_CHAP', 'IB_SNAP', 'IB_TRUCK');
-    }
-    if (uso.includes('brinde') || uso.includes('corporativo') || uso.includes('empresa') || uso.includes('marketing') || uso.includes('mimo')) {
-        recomendacoes.push('IB_SNAP', 'IB_TRUCK', 'IB_BOLSA');
-    }
-    if (uso.includes('uniforme') || uso.includes('equipe') || uso.includes('time') || uso.includes('funcionario') || uso.includes('funcionário')) {
-        recomendacoes.push('IB_SNAP', 'IB_TRUCK', 'IB_DAD');
-    }
-    if (uso.includes('evento') || uso.includes('casamento') || uso.includes('formatura') || uso.includes('festa') || uso.includes('15 anos') || uso.includes('aniversario') || uso.includes('aniversário')) {
-        recomendacoes.push('IB_SNAP', 'IB_DAD', 'IB_VIS');
-    }
-    if (uso.includes('casual') || uso.includes('dia a dia') || uso.includes('uso diario') || uso.includes('pessoal')) {
-        recomendacoes.push('IB_DAD', 'IB_SNAP', 'IB_TRUCK');
-    }
-    if (uso.includes('marca') || uso.includes('colecao') || uso.includes('coleção') || uso.includes('influencer') || uso.includes('revenda') || uso.includes('streetwear')) {
-        recomendacoes.push('IB_SNAP', 'IB_DAD', 'IB_TRUCK');
-    }
-    if (uso.includes('bolsa') || uso.includes('sacola') || uso.includes('bag') || uso.includes('ecobag')) {
-        recomendacoes.push('IB_BOLSA');
-    }
-    if (uso.includes('praia') || uso.includes('verão') || uso.includes('verao') || uso.includes('festival') || uso.includes('show')) {
-        recomendacoes.push('IB_CHAP', 'IB_VIS', 'IB_SNAP');
-    }
-
-    if (recomendacoes.length === 0) recomendacoes.push('IB_SNAP', 'IB_TRUCK', 'IB_DAD');
-
-    return [...new Set(recomendacoes)].slice(0, 3);
-}
+// recomendarModelos e cartelasDoLead vivem em ./catalogo-helpers (puros, reusados pelos evals)
+const { recomendarModelos, cartelasDoLead } = require('./catalogo-helpers');
 
 // =============================================================
 //  FOLLOW-UPS
@@ -616,24 +586,6 @@ function buscarPorKeywords(texto) {
     return null;
 }
 
-// Escolhe a(s) cartela(s) de cores conforme o produto escolhido.
-// Padrão: Supercap (paleta premium mais completa). Casos específicos:
-// Dad Hat = Brim; Trucker = Supercap (corpo) + Tela Resinada (traseira).
-function cartelasDoLead(leadData) {
-    const dir = './assets/cores-tecidos';
-    const modelo = leadData.modeloEscolhido;
-    if (modelo === 'IB_DAD') {
-        return [{ nome: 'Brim', arquivo: `${dir}/brim.png` }];
-    }
-    if (modelo === 'IB_TRUCK') {
-        return [
-            { nome: 'Supercap (corpo)', arquivo: `${dir}/supercap.png` },
-            { nome: 'Tela Resinada (traseira)', arquivo: `${dir}/tela-resinada.png` }
-        ];
-    }
-    return [{ nome: 'Supercap', arquivo: `${dir}/supercap.png` }];
-}
-
 async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDepois) {
     let imagensEnviadas = false;
 
@@ -826,7 +778,8 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
 
             // Já escolheu o produto e ainda não a técnica: trata como arte, reconhece de forma
             // contextual (referenciando o que viu) e leva para a escolha da técnica.
-            if (leadData.modeloEscolhido && (!leadData.temArte || leadData.temArte === 'sim') && !leadData.tecnica) {
+            // (No modo agente o próprio agente conduz isso — não fazemos o curto-circuito legado.)
+            if (!AGENT_MODE && leadData.modeloEscolhido && (!leadData.temArte || leadData.temArte === 'sim') && !leadData.tecnica) {
                 leadData.temArte = 'enviou';
                 const histAck = leadData.conversationHistory.slice(-30).map(h => ({
                     role: h.role === 'user' ? 'user' : 'assistant', content: h.content
@@ -884,6 +837,40 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         if (quotedText) {
             console.log(`💬 Mensagem citada: "${quotedText}"`);
             texto = `[RESPOSTA À MENSAGEM: "${quotedText}"]\n${texto}`;
+        }
+
+        // ---------------------------------------------------------
+        //  MODO AGENTE (Fase 3) — tool-calling. A IA conduz e decide
+        //  quando chamar preço, fotos, mockup e transferência.
+        //  O fluxo legado abaixo (state machine) fica intacto para AGENT_MODE=false.
+        // ---------------------------------------------------------
+        if (AGENT_MODE) {
+            const io = {
+                enviarImagens,
+                enviarMensagem,
+                notificarEquipe,
+                gerarMockup,
+                recomendarModelos,
+                cartelasDoLead
+            };
+            const contexto = { analiseImagem: leadData.analiseImagem };
+            leadData.analiseImagem = null; // já consumido nesta mensagem
+
+            const { resposta } = await rodarAgente({
+                openai, leadData, mensagemCliente: texto, io, chatId, contexto
+            });
+
+            leadData.conversationHistory.push({ role: 'user', content: texto });
+            if (resposta) {
+                leadData.conversationHistory.push({ role: 'assistant', content: resposta });
+                await enviarMensagensQuebradas(chatId, resposta);
+            }
+            if (leadData.conversationHistory.length > 100) {
+                leadData.conversationHistory = leadData.conversationHistory.slice(-100);
+            }
+            // Follow-up de reativação (o agente já cuidou de finalizar/transferir quando foi o caso)
+            if (!leadData.finalizado) agendarFollowUpReativacao(chatId, leadData);
+            return;
         }
 
         const proximoCampoAntes = determinarProximoCampo(leadData);
@@ -1347,6 +1334,66 @@ app.get('/health', (req, res) => {
 
 app.get('/webhook', (req, res) => {
     res.status(200).json({ status: 'ok' });
+});
+
+// =============================================================
+//  ANALYTICS DE FUNIL (Fase 3)
+//  Percorre os leads no store e reporta quantos alcançaram cada
+//  etapa, onde os não-finalizados pararam e a taxa de conversão.
+//  Rótulos amigáveis das etapas do funil.
+// =============================================================
+const ROTULO_ETAPA = {
+    contato: 'Contato iniciado', qualificando: 'Qualificando (qtd + finalidade)',
+    modelo: 'Modelo escolhido', tecnica: 'Técnica definida',
+    cor: 'Cor definida', finalizado: 'Transferido ao consultor'
+};
+
+app.get('/analytics', async (req, res) => {
+    try {
+        const ids = await store.scanLeadIds();
+        const leads = [];
+        for (const id of ids) {
+            try { const l = await store.getLead(id); if (l) leads.push(l); } catch (_) { /* pula lead ilegível */ }
+        }
+
+        const total = leads.length;
+        const idx = (etapa) => ETAPAS_FUNIL.indexOf(etapa);
+        const estagios = leads.map(estagioDoLead);
+
+        // Quantos alcançaram cada etapa (cumulativo: etapa N conta quem chegou em N ou além)
+        const funil = ETAPAS_FUNIL.map((etapa) => {
+            const alcancaram = estagios.filter(e => idx(e) >= idx(etapa)).length;
+            return {
+                etapa,
+                rotulo: ROTULO_ETAPA[etapa],
+                alcancaram,
+                taxa: total ? Math.round((alcancaram / total) * 100) + '%' : '0%'
+            };
+        });
+
+        // Onde os leads NÃO finalizados estão parados
+        const abandono = {};
+        for (const e of estagios) {
+            if (e === 'finalizado') continue;
+            abandono[e] = (abandono[e] || 0) + 1;
+        }
+
+        const finalizados = estagios.filter(e => e === 'finalizado').length;
+        const orcamentosConsultados = leads.filter(l => l.etapas && l.etapas.orcamento).length;
+
+        res.json({
+            total,
+            finalizados,
+            conversao: total ? Math.round((finalizados / total) * 100) + '%' : '0%',
+            orcamentosConsultados,
+            funil,
+            abandonoPorEtapa: abandono,
+            atualizadoEm: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('❌ Erro no /analytics:', e.message);
+        res.status(500).json({ erro: e.message });
+    }
 });
 
 // =============================================================

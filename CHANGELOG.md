@@ -1,5 +1,40 @@
 # Changelog — IA Imperial Bonés Personalizados
 
+## [1.3.0] — 2026-07-21
+
+### 🤖 Fase 3 — Núcleo com tool-calling + evals + analytics de funil
+
+Nova arquitetura de agente atrás da flag `AGENT_MODE` (desligada por padrão; o fluxo
+legado — state machine — continua ativo e intacto até a validação em produção).
+
+- **`agente.js` (novo)**: loop de tool-calling da OpenAI. A IA conduz a conversa e DECIDE
+  quando chamar as ferramentas: `registrar_dados`, `consultar_preco` (preço SEMPRE da tabela
+  real — nunca inventado), `enviar_fotos_modelos/tecnicas/reguladores`, `enviar_cartela_cores`,
+  `gerar_mockup` e `transferir_consultor`. Efeitos colaterais entram por injeção (`io`),
+  então roda em teste sem tocar a ChatClean. Guard de pedido mínimo (25 un.) preservado.
+  Retry com backoff em 429/5xx. Carimba as etapas do funil no `leadData`.
+- **`prompts.js`**: novo `promptAgente(leadData)` — identidade, segurança/anti-jailbreak,
+  tom ChatClean, catálogo, fluxo, pedido mínimo e guia de uso das ferramentas.
+- **`catalogo-helpers.js` (novo)**: `recomendarModelos` e `cartelasDoLead` extraídos do
+  `index.js` (funções puras, reusadas pela produção e pelos evals).
+- **`index.js`**: flag `AGENT_MODE`; delegação ao agente em `processarMensagem` (reusa
+  visão/transcrição/pós-pedido/follow-up); endpoint **`GET /analytics`** (funil por etapa,
+  onde os leads param, taxa de conversão e nº de orçamentos consultados).
+- **`evals/` (novo)**: suíte por cenários (`npm run evals`) que roda o agente real contra
+  `io` mockado e asserta ferramentas chamadas + estado final. 5 cenários / 16 asserções
+  verdes no `gpt-4o`.
+- **Modelo do agente**: padrão passou a `gpt-4o` (`AGENT_MODEL` sobrescreve). Os evals
+  mostraram que o `gpt-4o-mini` é instável ao disparar as ferramentas terminais
+  (transferência/notificação).
+
+### Tuning conhecido (para quando ligar `AGENT_MODE` em produção)
+
+- No `gpt-4o-mini`, o agente é pouco proativo em enviar fotos e às vezes anuncia a
+  transferência no texto sem chamar `transferir_consultor` (a equipe não é notificada).
+  Por isso o padrão é `gpt-4o`. Rodar `npm run evals` antes de virar a chave.
+
+---
+
 ## [1.1.0] — 2026-06-23
 
 ### 📚 Atualização com documentação completa do cliente
