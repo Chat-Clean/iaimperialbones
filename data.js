@@ -94,7 +94,7 @@ const CATALOGO_MODELOS = {
         descricao: 'Altamente procurada para beach tennis, academias, eventos esportivos e atividades ao ar livre. Logo bordada ou silk screen. Sem copa, ideal para quem prioriza conforto térmico.',
         estilo: 'Esportivo e funcional.',
         precoReferencia: 'A partir de R$ 8,99/unidade',
-        arquivo: './assets/modelos/viseira.jpeg',
+        arquivo: './assets/modelos/viseira.png',
         keywords: ['viseira', 'beach tennis', 'esporte', 'academia', 'corrida', 'sem copa', 'fitness', 'tenis', 'esportivo']
     },
     'IB_BOLSA': {

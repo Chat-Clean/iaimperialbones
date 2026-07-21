@@ -18,28 +18,33 @@ americano.png        → IB_SNAP (Snapback / Americano)
 trucker.png          → IB_TRUCK
 dad-hat.png          → IB_DAD
 chapeu-protecao.png  → IB_CHAP (chapéu principal = líder de vendas)
+viseira.png          → IB_VIS
 ```
 
-Extras na pasta, ainda NÃO ligados no código (chapéus e 6 gomos):
+Extras na pasta, ainda NÃO ligados no código:
 ```
-6gomos.png
+6gomos.png            (boné 6 gomos)
 chapeu-bucket.png
 chapeu-juta.png
 chapeu-palha.png
 chapeu-cata-ovo.png
+meia-lua.png          (Linha Básica)
+linha-essencial.png   (composto Trucker+Americano+6 Gomos Oxford)
+outros-premium.png    (composto Esportivo/Ciclista/Five Panel)
 ```
 
-**Faltam** (o `data.js` ainda aponta pra `.jpeg` inexistente):
+**Falta** (o `data.js` ainda aponta pra `.jpeg` inexistente):
 ```
-viseira.png   → IB_VIS
 bolsa.png     → IB_BOLSA
 ```
 
 ## 📂 prova-social/
 
 ```
-depoimentos.png   (print de avaliações do Google — não ligado no código)
+depoimentos.png    (print de avaliações do Google)
+depoimentos-2.png  (idem — outro print)
 ```
+> Não ligados no código.
 
 ## 📂 tecnicas/ (7 arquivos obrigatórios)
 
