@@ -48,6 +48,7 @@ CAMPOS PARA EXTRAIR:
 - querVerTodosModelos: true SOMENTE se cliente pedir EXPLICITAMENTE para ver TODOS os produtos/catálogo completo.
 - querVerModelos: true SOMENTE na PRIMEIRA VEZ que o cliente vai ver os modelos (ao informar objetivo) ou se pedir explicitamente.
 - querVerRegulador: true se cliente pedir fotos dos reguladores após você falar deles.
+- querVerCores: true SOMENTE quando o cliente pedir para VER/SABER as cores disponíveis (ex.: "quais cores vocês têm?", "tem qual cor?", "me mostra as cores"). NÃO marque quando ele apenas informar a cor que quer (isso é corPreferencia).
 
 IMPORTANTE:
 - NUNCA CONFUNDA SAUDAÇÃO COM NOME.

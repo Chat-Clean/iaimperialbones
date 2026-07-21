@@ -59,6 +59,7 @@ const timersFollowUp          = new Map();
 const followUpsEnviados       = new Map();
 const modelosEnviadosCache    = new Map();
 const tecnicasEnviadasCache   = new Map();
+const coresEnviadasCache      = new Map();
 
 // =============================================================
 //  UTILITÁRIOS
@@ -503,6 +504,24 @@ function buscarPorKeywords(texto) {
     return null;
 }
 
+// Escolhe a(s) cartela(s) de cores conforme o produto escolhido.
+// Padrão: Supercap (paleta premium mais completa). Casos específicos:
+// Dad Hat = Brim; Trucker = Supercap (corpo) + Tela Resinada (traseira).
+function cartelasDoLead(leadData) {
+    const dir = './assets/cores-tecidos';
+    const modelo = leadData.modeloEscolhido;
+    if (modelo === 'IB_DAD') {
+        return [{ nome: 'Brim', arquivo: `${dir}/brim.png` }];
+    }
+    if (modelo === 'IB_TRUCK') {
+        return [
+            { nome: 'Supercap (corpo)', arquivo: `${dir}/supercap.png` },
+            { nome: 'Tela Resinada (traseira)', arquivo: `${dir}/tela-resinada.png` }
+        ];
+    }
+    return [{ nome: 'Supercap', arquivo: `${dir}/supercap.png` }];
+}
+
 async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDepois) {
     let imagensEnviadas = false;
 
@@ -614,6 +633,22 @@ async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDe
         extraido.perguntaEspecificaEnviada = true;
     }
 
+    // Cartela de cores — dispara ao chegar no passo da cor (uma vez) OU quando o cliente pede
+    const pediuCores = !!extraido.querVerCores;
+    const chegouNaCor = proximoCampoDepois?.campo === 'corPreferencia';
+    if ((pediuCores || (chegouNaCor && !coresEnviadasCache.get(chatId))) && !leadData.corPreferencia) {
+        const cartelas = cartelasDoLead(leadData);
+        for (const c of cartelas) {
+            await enviarImagens(chatId, [c.arquivo], `Cartela de cores — ${c.nome}`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        coresEnviadasCache.set(chatId, true);
+        imagensEnviadas = true;
+        const nota = cartelas.length > 1 ? 'Essas são as cores disponíveis pra esse modelo. ' : 'Essas são as cores disponíveis. ';
+        await enviarMensagem(chatId, `${nota}Qual você prefere? 😊`);
+        extraido.perguntaEspecificaEnviada = true;
+    }
+
     return imagensEnviadas;
 }
 
@@ -652,6 +687,7 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             leadsData.delete(chatId);
             modelosEnviadosCache.delete(chatId);
             tecnicasEnviadasCache.delete(chatId);
+            coresEnviadasCache.delete(chatId);
             followUpsEnviados.delete(chatId);
             if (timersFollowUp.has(chatId)) { clearTimeout(timersFollowUp.get(chatId)); timersFollowUp.delete(chatId); }
             await enviarMensagem(chatId, '🔄 Conversa resetada! Vamos começar de novo. 😊');
