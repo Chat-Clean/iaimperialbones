@@ -20,9 +20,13 @@ legado — state machine — continua ativo e intacto até a validação em prod
 - **`index.js`**: flag `AGENT_MODE`; delegação ao agente em `processarMensagem` (reusa
   visão/transcrição/pós-pedido/follow-up); endpoint **`GET /analytics`** (funil por etapa,
   onde os leads param, taxa de conversão e nº de orçamentos consultados).
+- **Transbordo determinístico**: pedidos acima de 100 un. vão para negociação especial
+  (transfere + notifica a equipe) independente do modelo — paridade com o fluxo legado.
 - **`evals/` (novo)**: suíte por cenários (`npm run evals`) que roda o agente real contra
-  `io` mockado e asserta ferramentas chamadas + estado final. 5 cenários / 16 asserções
-  verdes no `gpt-4o`.
+  `io` mockado e asserta ferramentas chamadas + estado final. **10 cenários / 33 asserções**
+  verdes no `gpt-4o`: fluxo feliz, pedido mínimo, preço via ferramenta, mostrar catálogo,
+  dúvida avulsa, troca de modelo, anti-jailbreak, transbordo (>100), mockup e preço exato
+  por material.
 - **Modelo do agente**: padrão passou a `gpt-4o` (`AGENT_MODEL` sobrescreve). Os evals
   mostraram que o `gpt-4o-mini` é instável ao disparar as ferramentas terminais
   (transferência/notificação).

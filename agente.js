@@ -400,6 +400,19 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
         }
     }
 
+    // Transbordo determinístico (paridade com o legado): pedidos grandes (>100 un.) vão
+    // para negociação especial com o consultor, independente de o modelo lembrar de chamar
+    // a ferramenta. Não confia no "humor" do modelo — a regra de negócio é a fonte de verdade.
+    if (!leadData.finalizado && Number(leadData.quantidade) > 100) {
+        await EXECUTORES.transferir_consultor(
+            { motivo: `pedido grande (${leadData.quantidade} un.) — negociação especial` },
+            ctx
+        );
+        if (!resposta) {
+            resposta = 'Pra um pedido desse tamanho, vou te passar pra um dos nossos consultores fazer uma condição especial pra você! 🤝';
+        }
+    }
+
     return { resposta, toolsChamadas, leadData };
 }
 
