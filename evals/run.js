@@ -27,7 +27,9 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function rodarCenario(cenario) {
     const { io, log } = criarIoMock();
-    const leadData = { conversationHistory: [] };
+    // estadoInicial permite simular uma conversa já em andamento (retomada de lead).
+    const leadData = Object.assign({ conversationHistory: [] }, cenario.estadoInicial || {});
+    if (!Array.isArray(leadData.conversationHistory)) leadData.conversationHistory = [];
     const tools = [];
     const respostas = [];
 

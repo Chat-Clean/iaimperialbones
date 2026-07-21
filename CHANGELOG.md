@@ -23,10 +23,11 @@ legado — state machine — continua ativo e intacto até a validação em prod
 - **Transbordo determinístico**: pedidos acima de 100 un. vão para negociação especial
   (transfere + notifica a equipe) independente do modelo — paridade com o fluxo legado.
 - **`evals/` (novo)**: suíte por cenários (`npm run evals`) que roda o agente real contra
-  `io` mockado e asserta ferramentas chamadas + estado final. **10 cenários / 33 asserções**
+  `io` mockado e asserta ferramentas chamadas + estado final. **14 cenários / 45 asserções**
   verdes no `gpt-4o`: fluxo feliz, pedido mínimo, preço via ferramenta, mostrar catálogo,
-  dúvida avulsa, troca de modelo, anti-jailbreak, transbordo (>100), mockup e preço exato
-  por material.
+  dúvida avulsa, troca de modelo, anti-jailbreak, transbordo (>100), mockup, preço exato
+  por material, fala informal (estilo transcrição), cliente indeciso, múltiplos produtos e
+  retomada de conversa parada (via `estadoInicial` no runner).
 - **Modelo do agente**: padrão passou a `gpt-4o` (`AGENT_MODEL` sobrescreve). Os evals
   mostraram que o `gpt-4o-mini` é instável ao disparar as ferramentas terminais
   (transferência/notificação).

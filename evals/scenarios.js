@@ -169,6 +169,73 @@ const scenarios = [
     },
 
     {
+        nome: 'fala-informal-transcrita',
+        descricao: 'Mensagem informal/disfluente (estilo transcrição de áudio) — deve extrair nome, qtd e uso.',
+        turnos: [
+            'eaí beleza? é o marcos aqui',
+            'então mano, eu tô querendo uns bonezinho pra galera do meu time de futebol, uns 40 assim'
+        ],
+        assert: (ctx) => [
+            { desc: 'extraiu o nome (Marcos)', pass: /marcos/i.test(ctx.leadData.nome || '') },
+            { desc: 'quantidade = 40', pass: ctx.leadData.quantidade === 40 },
+            { desc: 'extraiu a finalidade (time/futebol)', pass: !!ctx.leadData.usoEvento }
+        ]
+    },
+
+    {
+        nome: 'cliente-indeciso',
+        descricao: 'Cliente na dúvida pede recomendação — deve orientar sem forçar o fechamento.',
+        turnos: [
+            'Oi, é a Paula. Quero uns 50 bonés pra minha loja de roupas',
+            'Não sei qual modelo escolher, o que você recomenda?',
+            'Hmm, ainda tô na dúvida entre o trucker e o dad hat'
+        ],
+        assert: (ctx) => [
+            { desc: 'respondeu/orientou', pass: !!(ctx.respostas.join('').trim()) },
+            { desc: 'não forçou a transferência', pass: !ctx.leadData.finalizado },
+            { desc: 'mostrou modelos ou deu recomendação', pass: ctx.chamou('enviar_fotos_modelos') || /trucker|dad hat|recomend|indic|sugir|sugest/i.test(ctx.textoTudo) }
+        ]
+    },
+
+    {
+        nome: 'multiplos-produtos',
+        descricao: 'Cliente quer dois produtos no mesmo pedido — não pode dropar um em silêncio.',
+        turnos: [
+            'Oi, sou o Bruno. Quero fazer 30 trucker e 20 dad hat pra empresa'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou dados', pass: ctx.chamou('registrar_dados') },
+            { desc: 'respondeu', pass: !!(ctx.respostas.join('').trim()) },
+            // Aceita: reconhecer os dois produtos OU encaminhar ao consultor (pedido misto).
+            { desc: 'reconheceu ambos os produtos ou encaminhou', pass: (/trucker/i.test(ctx.textoTudo) && /dad hat/i.test(ctx.textoTudo)) || ctx.leadData.finalizado === true }
+        ]
+    },
+
+    {
+        nome: 'retomada-conversa',
+        descricao: 'Lead volta após parar — deve continuar de onde estava, sem re-perguntar o que já sabe.',
+        estadoInicial: {
+            nome: 'Julia',
+            tipoAtendimento: 'compra',
+            quantidade: 50,
+            usoEvento: 'brinde corporativo',
+            modeloEscolhido: 'IB_SNAP',
+            conversationHistory: [
+                { role: 'user', content: 'quero uns 50 bonés pra brinde da empresa' },
+                { role: 'assistant', content: 'Perfeito! Gostei da ideia. Você já tem a logo/arte pronta?' }
+            ]
+        },
+        turnos: [
+            'Oi, voltei! Ainda dá pra continuar aquele pedido?'
+        ],
+        assert: (ctx) => [
+            { desc: 'estado preservado (nome/qtd/modelo)', pass: ctx.leadData.nome === 'Julia' && ctx.leadData.quantidade === 50 && ctx.leadData.modeloEscolhido === 'IB_SNAP' },
+            { desc: 'não re-perguntou o nome', pass: !/com quem eu falo|qual (é |e )?o seu nome|qual seu nome|seu nome\?/i.test(ctx.textoTudo) },
+            { desc: 'retomou o atendimento', pass: !!(ctx.respostas.join('').trim()) }
+        ]
+    },
+
+    {
         nome: 'preco-exato-por-material',
         descricao: 'Cliente informa o nível/material (premium/supercap) — preço deve ser EXATO, sem range.',
         turnos: [
