@@ -61,6 +61,7 @@ CAMPOS PARA EXTRAIR:
 - querVerModelos: true SOMENTE na PRIMEIRA VEZ que o cliente vai ver os modelos (ao informar objetivo) ou se pedir explicitamente.
 - querVerRegulador: true se cliente pedir fotos dos reguladores após você falar deles.
 - querVerCores: true SOMENTE quando o cliente pedir para VER/SABER as cores disponíveis (ex.: "quais cores vocês têm?", "tem qual cor?", "me mostra as cores"). NÃO marque quando ele apenas informar a cor que quer (isso é corPreferencia).
+- querSaberPreco: true quando o cliente perguntar preço/valor/orçamento (ex.: "quanto custa?", "qual o valor?", "me passa o preço", "quanto fica o trucker?").
 
 IMPORTANTE:
 - NUNCA CONFUNDA SAUDAÇÃO COM NOME.
@@ -91,7 +92,7 @@ Responda APENAS com JSON:`;
 // -------------------------------------------------------------
 //  Prompt de GERAÇÃO DE RESPOSTA (gpt-4o-mini, temperature 0.7)
 // -------------------------------------------------------------
-function promptResposta({ isInicioConversa, mensagemSanitizada, imagensForamEnviadas, proximoCampo, leadData }) {
+function promptResposta({ isInicioConversa, mensagemSanitizada, imagensForamEnviadas, proximoCampo, leadData, precoContexto }) {
     const nomes = nomesAmigaveis(leadData);
     return `Você é a IA humanizada da Imperial Bonés Personalizados.
 ${isInicioConversa ? 'ESTA É A PRIMEIRA MENSAGEM. Comece OBRIGATORIAMENTE com: "Olá! Tudo bem? 😊 Aqui na Imperial Bonés, criamos produtos personalizados exclusivos que elevam a sua marca. Para iniciarmos seu atendimento, com quem eu falo?" Não faça outras perguntas agora.' : ''}
@@ -270,7 +271,8 @@ REGRAS CRÍTICAS:
 
 SITUAÇÃO ATUAL:
 - Cliente disse: "${mensagemSanitizada}"
-${leadData.avisarMinimo ? '- PEDIDO MÍNIMO (PRIORIDADE): o cliente pediu ' + leadData.avisarMinimo + ' unidades, ABAIXO do mínimo. Explique com gentileza, no SEU estilo, que o pedido mínimo é 30 unidades (ou 25 com acréscimo de R$1,50/un, ou combinações 20+20 / 25+25 com o mesmo logo) e pergunte se ele consegue ajustar a quantidade. NÃO avance na venda enquanto ele não ajustar.' : ''}
+${precoContexto ? '- ' + precoContexto + ' Apresente esses valores de forma consultiva; se ainda não sabe a finalidade/uso, pode perguntar rapidinho antes de detalhar, mas responda ao que ele perguntou.' : ''}
+${leadData.avisarMinimo ?'- PEDIDO MÍNIMO (PRIORIDADE): o cliente pediu ' + leadData.avisarMinimo + ' unidades, ABAIXO do mínimo. Explique com gentileza, no SEU estilo, que o pedido mínimo é 30 unidades (ou 25 com acréscimo de R$1,50/un, ou combinações 20+20 / 25+25 com o mesmo logo) e pergunte se ele consegue ajustar a quantidade. NÃO avance na venda enquanto ele não ajustar.' : ''}
 ${leadData.analiseImagem ? '- Imagem que o cliente enviou (você VIU isto — referencie na resposta): ' + leadData.analiseImagem : ''}
 ${imagensForamEnviadas ? '- ATENÇÃO: Imagens acabaram de ser enviadas. NÃO repita perguntas ou transições.' : ''}
 - Próxima pergunta: ${proximoCampo ? proximoCampo.pergunta : (leadData.qualificacaoCompleta ? 'Todos os dados foram coletados. Se você AINDA NÃO confirmou o resumo do pedido nesta conversa, confirme-o agora de forma calorosa e encaminhe para o consultor. Se JÁ confirmou (veja o histórico), NÃO repita o resumo — apenas responda naturalmente ao que o cliente disse.' : 'Dúvida sanada. Responda ao que o cliente disse e, se fizer sentido, pergunte se há mais alguma dúvida ou se quer fazer um orçamento.')}

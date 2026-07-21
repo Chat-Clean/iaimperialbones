@@ -54,6 +54,7 @@ const { promptExtracao, promptResposta } = require('./prompts');
 //  ESTADO EM MEMÓRIA
 // =============================================================
 const store = require('./store'); // estado das conversas (Redis + fallback em memória)
+const orcamento = require('./orcamento'); // preços reais da tabela (a IA nunca inventa preço)
 const processandoMensagem     = new Map();  // lock de processamento (transitório, por instância)
 const timersFollowUp          = new Map();  // timers de follow-up em memória (não persistem entre restarts)
 // Os caches de envio (modelos/cores) e o último follow-up agora vivem dentro do leadData,
@@ -385,7 +386,7 @@ async function extrairInformacoesComIA(mensagem, campoAtual, historicoRecente = 
 // =============================================================
 //  IA — GERAÇÃO DE RESPOSTA
 // =============================================================
-async function gerarRespostaIA(leadData, mensagemCliente, proximoCampo, historicoRecente = [], imagensForamEnviadas = false) {
+async function gerarRespostaIA(leadData, mensagemCliente, proximoCampo, historicoRecente = [], imagensForamEnviadas = false, precoContexto = null) {
     if (imagensForamEnviadas && (
         proximoCampo?.campo === 'modeloEscolhido' ||
         proximoCampo?.campo === 'tecnica' ||
@@ -407,7 +408,7 @@ async function gerarRespostaIA(leadData, mensagemCliente, proximoCampo, historic
         return 'Para eu te ajudar a escolher a melhor técnica de personalização para sua arte, vou te mostrar as opções que trabalhamos.';
     }
 
-    const prompt = promptResposta({ isInicioConversa, mensagemSanitizada, imagensForamEnviadas, proximoCampo, leadData });
+    const prompt = promptResposta({ isInicioConversa, mensagemSanitizada, imagensForamEnviadas, proximoCampo, leadData, precoContexto });
 
     const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -1034,7 +1035,16 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         const ultimaMensagemBot = leadData.conversationHistory.length > 0 ? leadData.conversationHistory[leadData.conversationHistory.length - 1] : null;
         const jaPerguntouIsso = ultimaMensagemBot?.role === 'assistant' && proximoCampoDepois && ultimaMensagemBot.content.includes(proximoCampoDepois.pergunta.substring(0, 30));
 
-        const resposta = await gerarRespostaIA(leadData, texto, proximoCampoDepois, historicoRecente, imagensForamEnviadas);
+        // Motor de orçamento: se o cliente perguntou preço, calcula os valores REAIS da tabela
+        // para o modelo em questão e injeta no prompt (a IA só apresenta, não inventa).
+        let precoContexto = null;
+        const perguntouPreco = extraido?.querSaberPreco || /(preç|preco|quanto|valor|custa|orçament|orcament)/i.test(texto);
+        if (perguntouPreco) {
+            const codPreco = leadData.modeloEscolhido || (buscaKeyword && buscaKeyword.tipo === 'modelo' ? buscaKeyword.codigo : null);
+            if (codPreco) precoContexto = orcamento.contextoPreco(codPreco, leadData.quantidade, CATALOGO_MODELOS[codPreco]?.nome);
+        }
+
+        const resposta = await gerarRespostaIA(leadData, texto, proximoCampoDepois, historicoRecente, imagensForamEnviadas, precoContexto);
 
         leadData.conversationHistory.push({ role: 'user', content: texto });
 
