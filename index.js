@@ -56,9 +56,10 @@ const { promptExtracao, promptResposta } = require('./prompts');
 const store = require('./store'); // estado das conversas (Redis + fallback em memória)
 const orcamento = require('./orcamento'); // preços reais da tabela (a IA nunca inventa preço)
 const processandoMensagem     = new Map();  // lock de processamento (transitório, por instância)
-const timersFollowUp          = new Map();  // timers de follow-up em memória (não persistem entre restarts)
-// Os caches de envio (modelos/cores) e o último follow-up agora vivem dentro do leadData,
-// para persistirem junto com a conversa: leadData.modelosEnviados, .coresEnviadas, .followUpUltimo
+// O follow-up de reativação agora é DURÁVEL: em vez de um setTimeout em memória (morre no
+// redeploy), guardamos leadData.followUpDueAt (timestamp) e um varredor periódico dispara
+// os que venceram. Os caches de envio (modelos/cores) e o último follow-up também vivem
+// dentro do leadData: leadData.modelosEnviados, .coresEnviadas, .followUpUltimo, .followUpDueAt
 
 // =============================================================
 //  UTILITÁRIOS
@@ -313,43 +314,68 @@ async function enviarFollowUps(chatId, momento) {
     }
 }
 
+const TEMPO_INATIVIDADE = 30 * 60 * 1000;   // 30 min sem resposta → reativação
+const FOLLOWUP_SWEEP    = 2 * 60 * 1000;    // varre os follow-ups vencidos a cada 2 min
+
+// Agenda (ou reagenda) a reativação: só marca o timestamp no leadData. O varredor cuida
+// de disparar. Persistido junto da conversa, então sobrevive a redeploy/restart.
 function agendarFollowUpReativacao(chatId, leadData) {
-    if (timersFollowUp.has(chatId)) clearTimeout(timersFollowUp.get(chatId));
-    if (leadData.finalizado) return;
-
-    const TEMPO_INATIVIDADE = 30 * 60 * 1000;
-
-    const timer = setTimeout(async () => {
-        try {
-            const proximo = determinarProximoCampo(leadData);
-            if (!proximo) return;
-
-            let msgReativacao = '';
-            const nome = leadData.nome?.split(' ')[0] || 'amigo(a)';
-
-            if (proximo.campo === 'tipoAtendimento') {
-                msgReativacao = `Oi ${nome}, ainda está por aí? Me conta como posso te ajudar com seus produtos personalizados! 😊`;
-            } else if (proximo.campo === 'modeloEscolhido' || proximo.campo === 'usoEvento') {
-                msgReativacao = `Oi ${nome}! Conseguiu dar uma olhadinha nos produtos que te enviei? Se tiver qualquer dúvida, é só falar! 🧢`;
-            } else if (proximo.campo === 'temArte') {
-                msgReativacao = `Oi ${nome}, estou aguardando sua arte para darmos continuidade ao orçamento. Assim que puder, me envia por aqui! ✨`;
-            } else {
-                msgReativacao = `Oi ${nome}! Passando para saber se ficou alguma dúvida sobre o que conversamos. Estou à disposição para finalizarmos seu pedido! 😊`;
-            }
-
-            if (leadData.followUpUltimo === msgReativacao) return;
-
-            await enviarMensagem(chatId, msgReativacao);
-            leadData.followUpUltimo = msgReativacao;
-            try { await store.saveLead(chatId, leadData); } catch (_) {}
-            console.log(`📩 Follow-up de reativação enviado para ${chatId}`);
-        } catch (e) {
-            console.error('Erro ao enviar follow-up:', e);
-        }
-    }, TEMPO_INATIVIDADE);
-
-    timersFollowUp.set(chatId, timer);
+    if (leadData.finalizado) { leadData.followUpDueAt = null; return; }
+    leadData.followUpDueAt = Date.now() + TEMPO_INATIVIDADE;
 }
+
+// Monta a mensagem de reativação conforme o ponto do funil em que o lead parou.
+function montarMsgReativacao(leadData) {
+    const proximo = determinarProximoCampo(leadData);
+    if (!proximo) return null;
+    const nome = leadData.nome?.split(' ')[0] || 'amigo(a)';
+    if (proximo.campo === 'tipoAtendimento') {
+        return `Oi ${nome}, ainda está por aí? Me conta como posso te ajudar com seus produtos personalizados! 😊`;
+    }
+    if (proximo.campo === 'modeloEscolhido' || proximo.campo === 'usoEvento') {
+        return `Oi ${nome}! Conseguiu dar uma olhadinha nos produtos que te enviei? Se tiver qualquer dúvida, é só falar! 🧢`;
+    }
+    if (proximo.campo === 'temArte') {
+        return `Oi ${nome}, estou aguardando sua arte para darmos continuidade ao orçamento. Assim que puder, me envia por aqui! ✨`;
+    }
+    return `Oi ${nome}! Passando para saber se ficou alguma dúvida sobre o que conversamos. Estou à disposição para finalizarmos seu pedido! 😊`;
+}
+
+// Dispara a reativação de UM lead (chamado pelo varredor). Limpa o followUpDueAt ANTES de
+// enviar para não duplicar caso duas varreduras se cruzem.
+async function dispararFollowUpReativacao(chatId, leadData) {
+    const msg = montarMsgReativacao(leadData);
+    leadData.followUpDueAt = null;
+    if (!msg || leadData.followUpUltimo === msg) {
+        try { await store.saveLead(chatId, leadData); } catch (_) {}
+        return;
+    }
+    leadData.followUpUltimo = msg;
+    try { await store.saveLead(chatId, leadData); } catch (_) {}
+    await enviarMensagem(chatId, msg);
+    console.log(`📩 Follow-up de reativação enviado para ${chatId}`);
+}
+
+// Varredor: percorre os leads e dispara os follow-ups vencidos. Pula os que estão sendo
+// processados agora (evita corrida com uma mensagem em andamento).
+async function varrerFollowUps() {
+    try {
+        const ids = await store.scanLeadIds();
+        const agora = Date.now();
+        for (const chatId of ids) {
+            if (processandoMensagem.has(chatId)) continue;
+            let leadData;
+            try { leadData = await store.getLead(chatId); } catch (_) { continue; }
+            if (!leadData || leadData.finalizado) continue;
+            if (!leadData.followUpDueAt || leadData.followUpDueAt > agora) continue;
+            await dispararFollowUpReativacao(chatId, leadData);
+        }
+    } catch (e) {
+        console.error('Erro no varredor de follow-up:', e.message);
+    }
+}
+
+setInterval(varrerFollowUps, FOLLOWUP_SWEEP).unref?.();
 
 // =============================================================
 //  IA — EXTRAÇÃO DE INFORMAÇÕES
@@ -528,6 +554,16 @@ const TECIDO_HINT = {
     IB_BOLSA: 'bolsa/sacochila de tecido resistente'
 };
 
+// Aparência do tecido por linha escolhida (deixa o mockup mais fiel ao material)
+const MATERIAL_HINT = {
+    tactel:      'tactel leve, superfície lisa e levemente brilhosa',
+    oxford:      'oxford médio, trama visível e acabamento fosco',
+    supercap:    'supercap encorpado, aspecto premium e uniforme',
+    brim:        'brim de algodão, textura fosca e natural',
+    alfaiataria: 'tecido de alfaiataria sofisticado, caimento refinado',
+    camurca:     'camurça aveludada, superfície macia e fosca'
+};
+
 // Gera e envia a prévia da logo aplicada. Precisa de logoUrl + modeloEscolhido.
 async function gerarMockup(chatId, leadData) {
     if (!MOCKUP_ENABLED) return false;
@@ -541,10 +577,11 @@ async function gerarMockup(chatId, leadData) {
         const estrutura  = TECIDO_HINT[leadData.modeloEscolhido] || 'boné personalizado';
         const cor        = leadData.corPreferencia ? `na cor ${leadData.corPreferencia}` : 'em cor neutra elegante';
         const tecnica    = leadData.tecnica ? `A logo deve parecer aplicada com a técnica ${leadData.tecnica}.` : 'A logo deve parecer aplicada na frente.';
+        const tecido     = MATERIAL_HINT[leadData.material] ? ` Tecido: ${MATERIAL_HINT[leadData.material]}.` : '';
 
-        const prompt = `Mockup publicitário ilustrativo de um ${estrutura} (${nomeModelo}) ${cor}. Aplique a logomarca da imagem de referência de forma nítida, centralizada e proporcional na frente do produto. ${tecnica} Iluminação de estúdio, fundo neutro claro, visão frontal levemente em 3/4, aparência realista de produto de e-commerce, alta qualidade. Não adicione nenhum texto além da própria logo.`;
+        const prompt = `Mockup publicitário ilustrativo de um ${estrutura} (${nomeModelo}) ${cor}.${tecido} Aplique a logomarca da imagem de referência de forma nítida, centralizada e proporcional na frente do produto. ${tecnica} Iluminação de estúdio, fundo neutro claro, visão frontal levemente em 3/4, aparência realista de produto de e-commerce, alta qualidade. Não adicione nenhum texto além da própria logo.`;
 
-        console.log(`🎨 Gerando mockup: ${nomeModelo} | ${leadData.corPreferencia || 'cor neutra'} | ${leadData.tecnica || 'sem técnica'}`);
+        console.log(`🎨 Gerando mockup: ${nomeModelo} | ${leadData.corPreferencia || 'cor neutra'} | ${leadData.tecnica || 'sem técnica'} | ${leadData.material || 'material padrão'}`);
         const result = await openai.images.edit({ model: 'gpt-image-1', image: logoFile, prompt, size: '1024x1024', quality: 'medium' });
         const b64 = result.data?.[0]?.b64_json;
         if (!b64) { console.error('❌ Mockup: resposta sem imagem'); return false; }
@@ -752,15 +789,12 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         // Captura o nome do contato vindo do ChatClean (se ainda não temos)
         if (nomeContato && !leadData.nome) leadData.nome = nomeContato;
 
-        if (timersFollowUp.has(chatId)) {
-            clearTimeout(timersFollowUp.get(chatId));
-            timersFollowUp.delete(chatId);
-        }
+        // Nova mensagem do cliente cancela qualquer reativação pendente (é reagendada no fim).
+        leadData.followUpDueAt = null;
 
         // Reset
         if (texto.toLowerCase() === '/reset') {
             await store.deleteLead(chatId);
-            if (timersFollowUp.has(chatId)) { clearTimeout(timersFollowUp.get(chatId)); timersFollowUp.delete(chatId); }
             leadData = null; // impede que o finally regrave o lead recém-apagado
             await enviarMensagem(chatId, '🔄 Conversa resetada! Vamos começar de novo. 😊');
             return;
@@ -985,6 +1019,11 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
                         leadData[key] = nomesTecnicas[extraido[key]] || extraido[key];
                         extraido.querVerTecnicas = false;
                         if (leadData.modeloEscolhido && !leadData.tipoRegulador) extraido.querVerRegulador = false;
+                    } else if (key === 'material') {
+                        // Linha de tecido (tactel/oxford/supercap/brim/alfaiataria/camurca) — sempre
+                        // atualiza: o cliente pode subir/descer de nível ao longo da conversa. Torna
+                        // o preço exato (uma linha da tabela) e o mockup mais fiel.
+                        leadData[key] = extraido[key];
                     } else if (key === 'quantidade') {
                         const contextoEscolha = proximoCampoAntes?.campo === 'modeloEscolhido' || proximoCampoAntes?.campo === 'tipoRegulador' || proximoCampoAntes?.campo === 'tecnica';
                         if (contextoEscolha && extraido[key] < 10) {
@@ -1101,7 +1140,7 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         const perguntouPreco = extraido?.querSaberPreco || /(preç|preco|quanto|valor|custa|orçament|orcament)/i.test(texto);
         if (perguntouPreco) {
             const codPreco = leadData.modeloEscolhido || (buscaKeyword && buscaKeyword.tipo === 'modelo' ? buscaKeyword.codigo : null);
-            if (codPreco) precoContexto = orcamento.contextoPreco(codPreco, leadData.quantidade, CATALOGO_MODELOS[codPreco]?.nome);
+            if (codPreco) precoContexto = orcamento.contextoPreco(codPreco, leadData.quantidade, CATALOGO_MODELOS[codPreco]?.nome, leadData.material);
         }
 
         const resposta = await gerarRespostaIA(leadData, texto, proximoCampoDepois, historicoRecente, imagensForamEnviadas, precoContexto);

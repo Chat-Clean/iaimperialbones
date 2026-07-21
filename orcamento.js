@@ -47,11 +47,30 @@ function precosDoModelo(codigo) {
 
 const fmt = (v) => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
 
+// Palavra que identifica a linha de tecido no nome da linha da tabela.
+const MATERIAL_MATCH = {
+    tactel:      /tactel/i,
+    oxford:      /oxford/i,
+    supercap:    /supercap/i,
+    brim:        /brim/i,
+    alfaiataria: /alfaiataria/i,
+    camurca:     /camurça|camurca/i
+};
+
 // String com os preços reais do modelo, na faixa da quantidade (ou "a partir de 30").
+// Se o material for conhecido, restringe a UMA linha da tabela → preço EXATO (sem range).
 // Retorna null se não houver dados. Usado como contexto no prompt (a IA só apresenta).
-function contextoPreco(codigo, qtd, nomeAmigavel) {
-    const linhas = precosDoModelo(codigo);
+function contextoPreco(codigo, qtd, nomeAmigavel, material) {
+    let linhas = precosDoModelo(codigo);
     if (!linhas.length) return null;
+
+    // Filtro por material: se o cliente indicou o nível/tecido, cravamos a linha exata.
+    let materialExato = false;
+    const re = material && MATERIAL_MATCH[material];
+    if (re) {
+        const filtradas = linhas.filter(l => re.test(l.nome));
+        if (filtradas.length) { linhas = filtradas; materialExato = true; }
+    }
 
     const q = parseInt(qtd, 10);
     const temQtd = Number.isFinite(q) && q >= 30;
@@ -62,11 +81,14 @@ function contextoPreco(codigo, qtd, nomeAmigavel) {
 
     const min = Math.min(...valores);
     const max = Math.max(...valores);
-    const faixaTxt = min === max ? `${fmt(min)}/unidade` : `de ${fmt(min)} a ${fmt(max)}/unidade (varia conforme o material)`;
+    const faixaTxt = min === max
+        ? `${fmt(min)}/unidade`
+        : `de ${fmt(min)} a ${fmt(max)}/unidade${materialExato ? '' : ' (varia conforme o material)'}`;
     const ctxQtd = temQtd ? `para ${q} unidades (faixa ${faixaLabel(q)})` : `a partir de 30 unidades`;
     const nome = nomeAmigavel || codigo;
+    const linhaTxt = materialExato ? ` (linha ${linhas[0].nome})` : '';
 
-    return `PREÇOS REAIS (use EXATAMENTE estes números, NUNCA invente): ${nome} ${ctxQtd}: ${faixaTxt}. Personalizações adicionais (bordado/silk lateral, DTF, regulador de metal, etc.) somam ao valor base. Quanto maior a quantidade, menor o valor por unidade.`;
+    return `PREÇOS REAIS (use EXATAMENTE estes números, NUNCA invente): ${nome}${linhaTxt} ${ctxQtd}: ${faixaTxt}. Personalizações adicionais (bordado/silk lateral, DTF, regulador de metal, etc.) somam ao valor base. Quanto maior a quantidade, menor o valor por unidade.`;
 }
 
 module.exports = { bandaIndex, faixaLabel, precosDoModelo, contextoPreco };

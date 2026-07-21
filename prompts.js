@@ -9,10 +9,12 @@ const { CATALOGO_MODELOS, OPCOES_TECNICAS, OPCOES_REGULADORES } = require('./dat
 // Traduz os códigos internos do lead em nomes amigáveis para o cliente
 function nomesAmigaveis(leadData) {
     const regMap = { padrao: 'plastico', metal1: 'metalica_tipo1', metal2: 'metalica_tipo2' };
+    const matMap = { tactel: 'Básico (Tactel)', oxford: 'Essencial (Oxford)', supercap: 'Premium (Supercap)', brim: 'Brim', alfaiataria: 'Alfaiataria', camurca: 'Camurça' };
     return {
         produto: leadData.modeloEscolhido ? (CATALOGO_MODELOS[leadData.modeloEscolhido]?.nome || leadData.modeloEscolhido) : '',
         tecnica: leadData.tecnica ? (OPCOES_TECNICAS[leadData.tecnica]?.nome || leadData.tecnica) : '',
-        regulador: leadData.tipoRegulador ? (OPCOES_REGULADORES[regMap[leadData.tipoRegulador]]?.nome || leadData.tipoRegulador) : ''
+        regulador: leadData.tipoRegulador ? (OPCOES_REGULADORES[regMap[leadData.tipoRegulador]]?.nome || leadData.tipoRegulador) : '',
+        material: leadData.material ? (matMap[leadData.material] || leadData.material) : ''
     };
 }
 
@@ -37,6 +39,12 @@ CAMPOS PARA EXTRAIR:
   * Se a mensagem citar um código e o cliente usar "gostei", "quero", "esse", "legal", "top", "perfeito", extraia o código citado.
   * "chapéu de juta", "juta" = IB_CHAP | "bucket hat", "bucket" = IB_CHAP | "chapéu de palha", "palha" = IB_CHAP | "cata ovo" = IB_CHAP | "chapéu de proteção" = IB_CHAP
 - tipoChapeu: se o cliente pedir/escolher um tipo específico de chapéu, retorne: "protecao", "bucket", "juta", "palha", "cataoovo"
+- material: linha de tecido/acabamento do produto, quando o cliente indicar o nível ou o material. Retorne UM de: "tactel", "oxford", "supercap", "brim", "alfaiataria", "camurca".
+  * "básico", "mais barato", "econômico", "tactel" = "tactel"
+  * "essencial", "intermediário", "oxford" = "oxford"
+  * "premium", "top de linha", "melhor", "supercap" = "supercap"
+  * "brim" = "brim" | "alfaiataria" = "alfaiataria" | "camurça", "camurca" = "camurca"
+  * NÃO invente: só retorne se o cliente realmente indicou o nível/material. Caso contrário, null.
 - corPreferencia: Cor ou cores que o cliente deseja.
 - posicaoModelo: Se o cliente disser "primeiro", "segundo", "terceiro", retorne a posição (1, 2, 3).
 - querVerMaisModelos: "sim" se o cliente pedir para ver mais opções ou modelos.
@@ -277,7 +285,7 @@ ${leadData.avisarMinimo ?'- PEDIDO MÍNIMO (PRIORIDADE): o cliente pediu ' + lea
 ${leadData.analiseImagem ? '- Imagem que o cliente enviou (você VIU isto — referencie na resposta): ' + leadData.analiseImagem : ''}
 ${imagensForamEnviadas ? '- ATENÇÃO: Imagens acabaram de ser enviadas. NÃO repita perguntas ou transições.' : ''}
 - Próxima pergunta: ${proximoCampo ? proximoCampo.pergunta : (leadData.qualificacaoCompleta ? 'Todos os dados foram coletados. Se você AINDA NÃO confirmou o resumo do pedido nesta conversa, confirme-o agora de forma calorosa e encaminhe para o consultor. Se JÁ confirmou (veja o histórico), NÃO repita o resumo — apenas responda naturalmente ao que o cliente disse.' : 'Dúvida sanada. Responda ao que o cliente disse e, se fizer sentido, pergunte se há mais alguma dúvida ou se quer fazer um orçamento.')}
-- Dados coletados: ${leadData.nome ? 'Nome: ' + leadData.nome : ''} ${leadData.tipoAtendimento ? '| Tipo: ' + leadData.tipoAtendimento : ''} ${leadData.quantidade ? '| Qtd: ' + leadData.quantidade + ' (JÁ INFORMADO)' : '| Qtd: NÃO INFORMADO'} ${leadData.usoEvento ? '| Finalidade: ' + leadData.usoEvento + ' (JÁ INFORMADO)' : '| Finalidade: NÃO INFORMADO'} ${leadData.prazoRecebimento ? '| Prazo: ' + leadData.prazoRecebimento + ' (JÁ INFORMADO)' : '| Prazo: NÃO INFORMADO'} ${nomes.produto ? '| Produto: ' + nomes.produto + ' (JÁ ESCOLHIDO)' : ''} ${leadData.temArte ? '| Arte: ' + leadData.temArte : ''} ${leadData.quandoEnviaArte ? '| Envio Arte: ' + leadData.quandoEnviaArte + ' (JÁ DEFINIDO)' : ''} ${nomes.tecnica ? '| Técnica: ' + nomes.tecnica + ' (JÁ DEFINIDA)' : ''} ${nomes.regulador ? '| Regulador: ' + nomes.regulador + ' (JÁ DEFINIDO)' : ''} ${leadData.corPreferencia ? '| Cor: ' + leadData.corPreferencia + ' (JÁ INFORMADO)' : ''}`;
+- Dados coletados: ${leadData.nome ? 'Nome: ' + leadData.nome : ''} ${leadData.tipoAtendimento ? '| Tipo: ' + leadData.tipoAtendimento : ''} ${leadData.quantidade ? '| Qtd: ' + leadData.quantidade + ' (JÁ INFORMADO)' : '| Qtd: NÃO INFORMADO'} ${leadData.usoEvento ? '| Finalidade: ' + leadData.usoEvento + ' (JÁ INFORMADO)' : '| Finalidade: NÃO INFORMADO'} ${leadData.prazoRecebimento ? '| Prazo: ' + leadData.prazoRecebimento + ' (JÁ INFORMADO)' : '| Prazo: NÃO INFORMADO'} ${nomes.produto ? '| Produto: ' + nomes.produto + ' (JÁ ESCOLHIDO)' : ''} ${leadData.temArte ? '| Arte: ' + leadData.temArte : ''} ${leadData.quandoEnviaArte ? '| Envio Arte: ' + leadData.quandoEnviaArte + ' (JÁ DEFINIDO)' : ''} ${nomes.tecnica ? '| Técnica: ' + nomes.tecnica + ' (JÁ DEFINIDA)' : ''} ${nomes.regulador ? '| Regulador: ' + nomes.regulador + ' (JÁ DEFINIDO)' : ''} ${leadData.corPreferencia ? '| Cor: ' + leadData.corPreferencia + ' (JÁ INFORMADO)' : ''} ${nomes.material ? '| Linha/Material: ' + nomes.material + ' (JÁ DEFINIDO)' : ''}`;
 }
 
 module.exports = { promptExtracao, promptResposta };

@@ -69,6 +69,28 @@ async function deleteLead(chatId) {
     mem.delete(chatId);
 }
 
+// Lista os chatIds com estado ativo (para o varredor de follow-up).
+// Redis: SCAN por prefixo. Memória: chaves do Map.
+async function scanLeadIds() {
+    if (usingRedis) {
+        try {
+            const ids = [];
+            const prefixo = `${PREFIX}:lead:`;
+            let cursor = '0';
+            do {
+                const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefixo}*`, 'COUNT', 200);
+                cursor = next;
+                for (const k of keys) ids.push(k.slice(prefixo.length));
+            } while (cursor !== '0');
+            return ids;
+        } catch (e) {
+            console.error('❌ scanLeadIds:', e.message);
+            return [...mem.keys()];
+        }
+    }
+    return [...mem.keys()];
+}
+
 // Leads qualificados (histórico append-only)
 async function appendLeadFinalizado(registro) {
     if (usingRedis) {
@@ -78,4 +100,4 @@ async function appendLeadFinalizado(registro) {
     memLeads.push(registro);
 }
 
-module.exports = { isRedis, getLead, saveLead, deleteLead, appendLeadFinalizado };
+module.exports = { isRedis, getLead, saveLead, deleteLead, appendLeadFinalizado, scanLeadIds };
