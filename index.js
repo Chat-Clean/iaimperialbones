@@ -53,13 +53,11 @@ const { promptExtracao, promptResposta } = require('./prompts');
 // =============================================================
 //  ESTADO EM MEMÓRIA
 // =============================================================
-const leadsData               = new Map();
-const processandoMensagem     = new Map();
-const timersFollowUp          = new Map();
-const followUpsEnviados       = new Map();
-const modelosEnviadosCache    = new Map();
-const tecnicasEnviadasCache   = new Map();
-const coresEnviadasCache      = new Map();
+const store = require('./store'); // estado das conversas (Redis + fallback em memória)
+const processandoMensagem     = new Map();  // lock de processamento (transitório, por instância)
+const timersFollowUp          = new Map();  // timers de follow-up em memória (não persistem entre restarts)
+// Os caches de envio (modelos/cores) e o último follow-up agora vivem dentro do leadData,
+// para persistirem junto com a conversa: leadData.modelosEnviados, .coresEnviadas, .followUpUltimo
 
 // =============================================================
 //  UTILITÁRIOS
@@ -338,10 +336,11 @@ function agendarFollowUpReativacao(chatId, leadData) {
                 msgReativacao = `Oi ${nome}! Passando para saber se ficou alguma dúvida sobre o que conversamos. Estou à disposição para finalizarmos seu pedido! 😊`;
             }
 
-            if (followUpsEnviados.get(chatId) === msgReativacao) return;
+            if (leadData.followUpUltimo === msgReativacao) return;
 
             await enviarMensagem(chatId, msgReativacao);
-            followUpsEnviados.set(chatId, msgReativacao);
+            leadData.followUpUltimo = msgReativacao;
+            try { await store.saveLead(chatId, leadData); } catch (_) {}
             console.log(`📩 Follow-up de reativação enviado para ${chatId}`);
         } catch (e) {
             console.error('Erro ao enviar follow-up:', e);
@@ -542,11 +541,11 @@ async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDe
     }
     // Ver MAIS produtos
     else if (extraido.querVerMaisModelos) {
-        const jaEnviados = modelosEnviadosCache.get(chatId) || [];
+        const jaEnviados = leadData.modelosEnviados || [];
         const restantes = Object.keys(CATALOGO_MODELOS).filter(c => !jaEnviados.includes(c));
         if (restantes.length > 0) {
             const maisTres = restantes.slice(0, 3);
-            modelosEnviadosCache.set(chatId, [...jaEnviados, ...maisTres]);
+            leadData.modelosEnviados = [...jaEnviados, ...maisTres];
             await enviarMensagem(chatId, 'Aqui estão mais opções:');
             await new Promise(resolve => setTimeout(resolve, 1500));
             for (const codigo of maisTres) {
@@ -569,7 +568,7 @@ async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDe
     else if (extraido.querVerModelos && !leadData.modeloEscolhido) {
         const recomendacoes = recomendarModelos(leadData);
         if (recomendacoes.length > 0) {
-            modelosEnviadosCache.set(chatId, recomendacoes);
+            leadData.modelosEnviados = recomendacoes;
             await enviarMensagem(chatId, 'Perfeito! Vou te mostrar os produtos ideais para o que você precisa! 🧢✨');
             await new Promise(resolve => setTimeout(resolve, 1500));
             for (const codigo of recomendacoes) {
@@ -636,13 +635,13 @@ async function processarPedidoImagens(chatId, extraido, leadData, proximoCampoDe
     // Cartela de cores — dispara ao chegar no passo da cor (uma vez) OU quando o cliente pede
     const pediuCores = !!extraido.querVerCores;
     const chegouNaCor = proximoCampoDepois?.campo === 'corPreferencia';
-    if ((pediuCores || (chegouNaCor && !coresEnviadasCache.get(chatId))) && !leadData.corPreferencia) {
+    if ((pediuCores || (chegouNaCor && !leadData.coresEnviadas)) && !leadData.corPreferencia) {
         const cartelas = cartelasDoLead(leadData);
         for (const c of cartelas) {
             await enviarImagens(chatId, [c.arquivo], `Cartela de cores — ${c.nome}`);
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        coresEnviadasCache.set(chatId, true);
+        leadData.coresEnviadas = true;
         imagensEnviadas = true;
         const nota = cartelas.length > 1 ? 'Essas são as cores disponíveis pra esse modelo. ' : 'Essas são as cores disponíveis. ';
         await enviarMensagem(chatId, `${nota}Qual você prefere? 😊`);
@@ -669,11 +668,11 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         }
     }, 60000);
 
+    let leadData = null;
     try {
-        if (!leadsData.has(chatId)) {
-            leadsData.set(chatId, { conversationHistory: [] });
-        }
-        const leadData = leadsData.get(chatId);
+        // Carrega o estado da conversa do Redis (ou memória, no fallback)
+        leadData = await store.getLead(chatId);
+        if (!leadData) leadData = { conversationHistory: [] };
         // Captura o nome do contato vindo do ChatClean (se ainda não temos)
         if (nomeContato && !leadData.nome) leadData.nome = nomeContato;
 
@@ -684,12 +683,9 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
 
         // Reset
         if (texto.toLowerCase() === '/reset') {
-            leadsData.delete(chatId);
-            modelosEnviadosCache.delete(chatId);
-            tecnicasEnviadasCache.delete(chatId);
-            coresEnviadasCache.delete(chatId);
-            followUpsEnviados.delete(chatId);
+            await store.deleteLead(chatId);
             if (timersFollowUp.has(chatId)) { clearTimeout(timersFollowUp.get(chatId)); timersFollowUp.delete(chatId); }
+            leadData = null; // impede que o finally regrave o lead recém-apagado
             await enviarMensagem(chatId, '🔄 Conversa resetada! Vamos começar de novo. 😊');
             return;
         }
@@ -777,7 +773,7 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             content: h.content
         }));
 
-        const modelosEnviados = modelosEnviadosCache.get(chatId) || [];
+        const modelosEnviados = leadData.modelosEnviados || [];
         let extraido = await extrairInformacoesComIA(texto, proximoCampoAntes?.campo, historicoExtracao, modelosEnviados);
 
         // Debug regulador
@@ -1018,8 +1014,13 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         // Finalizar lead qualificado
         if (!proximoCampoDepois && !leadData.finalizado && leadData.tipoAtendimento === 'compra' && leadData.qualificacaoCompleta) {
             leadData.finalizado = true;
-            databaseLeads.leads.push({ ...leadData, chatId, data: obterDataHoraBrasilia() });
-            salvarDatabase();
+            const registro = { ...leadData, chatId, data: obterDataHoraBrasilia() };
+            if (store.isRedis()) {
+                try { await store.appendLeadFinalizado(registro); } catch (e) { console.error('❌ Erro ao salvar lead finalizado:', e.message); }
+            } else {
+                databaseLeads.leads.push(registro);
+                salvarDatabase();
+            }
 
             await enviarMensagem(chatId, 'Transferir para o departamento Comercial');
             await notificarEquipe(leadData, chatId);
@@ -1032,6 +1033,11 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
     } finally {
         clearTimeout(timeoutId);
         processandoMensagem.delete(chatId);
+        // Persiste o estado da conversa (salvo no /reset, que zera leadData)
+        if (leadData) {
+            try { await store.saveLead(chatId, leadData); }
+            catch (e) { console.error('❌ Erro ao salvar estado da conversa:', e.message); }
+        }
     }
 }
 
@@ -1204,14 +1210,19 @@ app.listen(PORT, () => {
     if (!BASE_URL)      console.warn('⚠️  ATENÇÃO: BASE_URL não configurado — envio de imagens desativado.');
     if (!EQUIPE_NUMERO) console.warn('ℹ️  EQUIPE_NUMERO não configurado — resumo de lead qualificado só irá como nota interna.');
     if (!process.env.OPENAI_API_KEY) { console.error('❌ OPENAI_API_KEY não configurada no .env!'); process.exit(1); }
+    console.log(store.isRedis()
+        ? '🗄️  Estado das conversas: Redis (persistente)'
+        : '🗄️  Estado das conversas: memória (defina REDIS_URL para persistir entre restarts)');
 
-    setInterval(() => { try { salvarDatabase(); } catch (_) {} }, 5 * 60 * 1000);
+    // database.json só é usado no fallback sem Redis (no Redis os leads vão para a lista)
+    if (!store.isRedis()) setInterval(() => { try { salvarDatabase(); } catch (_) {} }, 5 * 60 * 1000);
 });
 
 // Shutdown gracioso
 async function shutdown(signal) {
     console.log(`\n⚠️  Recebido sinal ${signal}. Encerrando servidor...`);
-    try { salvarDatabase(); console.log('✅ Banco de dados salvo.'); } catch (e) { console.error('❌ Erro ao salvar:', e); }
+    // Com Redis, o estado já é salvo a cada mensagem; database.json só no fallback.
+    if (!store.isRedis()) { try { salvarDatabase(); console.log('✅ Banco de dados salvo.'); } catch (e) { console.error('❌ Erro ao salvar:', e); } }
     process.exit(0);
 }
 process.on('SIGINT',  () => shutdown('SIGINT'));
