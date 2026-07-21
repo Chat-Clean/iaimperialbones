@@ -62,6 +62,7 @@ CAMPOS PARA EXTRAIR:
 - querVerRegulador: true se cliente pedir fotos dos reguladores após você falar deles.
 - querVerCores: true SOMENTE quando o cliente pedir para VER/SABER as cores disponíveis (ex.: "quais cores vocês têm?", "tem qual cor?", "me mostra as cores"). NÃO marque quando ele apenas informar a cor que quer (isso é corPreferencia).
 - querSaberPreco: true quando o cliente perguntar preço/valor/orçamento (ex.: "quanto custa?", "qual o valor?", "me passa o preço", "quanto fica o trucker?").
+- querMockup: true quando o cliente pedir para VER a logo/arte aplicada no produto (ex.: "como fica?", "me mostra aplicado", "faz uma prévia", "simula com minha logo", "dá pra ver no boné?").
 
 IMPORTANTE:
 - NUNCA CONFUNDA SAUDAÇÃO COM NOME.

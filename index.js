@@ -513,6 +513,55 @@ Não liste as técnicas agora e não invente detalhes que não estão na descri�
 }
 
 // =============================================================
+//  IA — MOCKUP (gera a logo do cliente aplicada no modelo — gpt-image-1)
+// =============================================================
+const MOCKUP_DIR = path.join(__dirname, 'assets', 'mockups');
+const MOCKUP_ENABLED = (process.env.MOCKUP_ENABLED || 'true') !== 'false';
+
+// Dica de estrutura/tecido por modelo, para o mockup ilustrativo
+const TECIDO_HINT = {
+    IB_SNAP:  'boné estilo americano/snapback de aba curva, frente estruturada 6 gomos',
+    IB_TRUCK: 'boné trucker com frente estruturada e traseira/laterais em tela (mesh)',
+    IB_DAD:   'boné dad hat de copa baixa em tecido brim fosco, sem estrutura frontal',
+    IB_CHAP:  'chapéu personalizado',
+    IB_VIS:   'viseira sem copa',
+    IB_BOLSA: 'bolsa/sacochila de tecido resistente'
+};
+
+// Gera e envia a prévia da logo aplicada. Precisa de logoUrl + modeloEscolhido.
+async function gerarMockup(chatId, leadData) {
+    if (!MOCKUP_ENABLED) return false;
+    if (!leadData.logoUrl || !leadData.modeloEscolhido) return false;
+    try {
+        // Baixa a logo enviada pelo cliente (referência para o gpt-image-1)
+        const resp = await axios.get(leadData.logoUrl, { responseType: 'arraybuffer', timeout: 30000 });
+        const logoFile = await OpenAI.toFile(Buffer.from(resp.data), 'logo.png', { type: resp.headers['content-type'] || 'image/png' });
+
+        const nomeModelo = CATALOGO_MODELOS[leadData.modeloEscolhido]?.nome || leadData.modeloEscolhido;
+        const estrutura  = TECIDO_HINT[leadData.modeloEscolhido] || 'boné personalizado';
+        const cor        = leadData.corPreferencia ? `na cor ${leadData.corPreferencia}` : 'em cor neutra elegante';
+        const tecnica    = leadData.tecnica ? `A logo deve parecer aplicada com a técnica ${leadData.tecnica}.` : 'A logo deve parecer aplicada na frente.';
+
+        const prompt = `Mockup publicitário ilustrativo de um ${estrutura} (${nomeModelo}) ${cor}. Aplique a logomarca da imagem de referência de forma nítida, centralizada e proporcional na frente do produto. ${tecnica} Iluminação de estúdio, fundo neutro claro, visão frontal levemente em 3/4, aparência realista de produto de e-commerce, alta qualidade. Não adicione nenhum texto além da própria logo.`;
+
+        console.log(`🎨 Gerando mockup: ${nomeModelo} | ${leadData.corPreferencia || 'cor neutra'} | ${leadData.tecnica || 'sem técnica'}`);
+        const result = await openai.images.edit({ model: 'gpt-image-1', image: logoFile, prompt, size: '1024x1024', quality: 'medium' });
+        const b64 = result.data?.[0]?.b64_json;
+        if (!b64) { console.error('❌ Mockup: resposta sem imagem'); return false; }
+
+        if (!fs.existsSync(MOCKUP_DIR)) fs.mkdirSync(MOCKUP_DIR, { recursive: true });
+        const rel = `./assets/mockups/${chatId}-${Date.now()}.png`;
+        fs.writeFileSync(path.join(__dirname, rel), Buffer.from(b64, 'base64'));
+
+        await enviarImagens(chatId, [rel], 'Fiz uma prévia da sua logo no modelo pra você ter uma ideia! 😍 O que achou?');
+        return true;
+    } catch (e) {
+        console.error('❌ Erro ao gerar mockup:', e.response?.data?.error?.message || e.message);
+        return false;
+    }
+}
+
+// =============================================================
 //  PROCESSAMENTO DE IMAGENS
 // =============================================================
 function buscarPorKeywords(texto) {
@@ -737,6 +786,7 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
                 leadData.analiseImagem = descImg;
                 console.log(`🖼️ Visão: ${descImg}`);
             }
+            if (mediaUrl) leadData.logoUrl = mediaUrl; // guarda a logo/arte para gerar o mockup depois
             // Registra o envio no histórico para dar contexto às próximas respostas
             leadData.conversationHistory.push({ role: 'user', content: `[O cliente enviou uma imagem]${descImg ? ' — ' + descImg : ''}` });
 
@@ -976,6 +1026,16 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             console.log(`🚧 Pedido mínimo: cliente pediu ${qtdNum} un (< 25) — segurando o avanço`);
         } else if (leadData.avisarMinimo && Number.isFinite(qtdNum) && qtdNum >= 25) {
             leadData.avisarMinimo = null; // cliente ajustou para quantidade válida
+        }
+
+        // Mockup: cliente pediu para ver a logo aplicada no modelo (precisa de logo + modelo)
+        if (extraido?.querMockup && leadData.logoUrl && leadData.modeloEscolhido) {
+            await enviarMensagem(chatId, 'Boa ideia! Deixa eu montar uma prévia da sua logo no modelo, só um instante 🎨');
+            const ok = await gerarMockup(chatId, leadData);
+            if (!ok) await enviarMensagem(chatId, 'Não consegui gerar a prévia agora, mas nosso consultor te manda um mockup caprichado! 😉');
+            leadData.conversationHistory.push({ role: 'user', content: texto });
+            leadData.conversationHistory.push({ role: 'assistant', content: '[Enviou prévia/mockup da logo]' });
+            return;
         }
 
         // Resposta afirmativa para arte
