@@ -11,7 +11,8 @@ function criarIoMock() {
         mensagens: [],   // textos enviados ao cliente
         imagens: [],     // { arquivos, legenda }
         notificacoes: [],// resumos enviados à equipe
-        mockups: 0
+        mockups: 0,
+        pedidosCliente: []// { chatId, nome, pedido } gravados na memória de cliente
     };
 
     const io = {
@@ -21,7 +22,8 @@ function criarIoMock() {
         async enviarImagens(_chatId, arquivos, legenda = '') { log.imagens.push({ arquivos, legenda }); return true; },
         async notificarEquipe(leadData, chatId, opcoes = {}) { log.notificacoes.push({ chatId, opcoes, nome: leadData.nome }); return true; },
         // Mockup não chama gpt-image-1 nos evals: só marca que foi solicitado.
-        async gerarMockup(_chatId, leadData) { log.mockups++; return !!(leadData.logoUrl && leadData.modeloEscolhido); }
+        async gerarMockup(_chatId, leadData) { log.mockups++; return !!(leadData.logoUrl && leadData.modeloEscolhido); },
+        async registrarPedidoCliente(chatId, dados) { log.pedidosCliente.push({ chatId, ...dados }); return true; }
     };
 
     return { io, log };

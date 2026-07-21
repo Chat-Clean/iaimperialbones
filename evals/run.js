@@ -37,6 +37,7 @@ async function rodarCenario(cenario) {
         const t = cenario.turnos[i];
         const texto = typeof t === 'string' ? t : t.texto;
         const contexto = {};
+        if (cenario.historicoCliente) contexto.historico = cenario.historicoCliente; // memória de cliente (recompra)
         if (typeof t === 'object') {
             if (t.arte) leadData.logoUrl = 'https://exemplo.com/logo-cliente.png';
             if (t.analiseImagem) contexto.analiseImagem = t.analiseImagem;

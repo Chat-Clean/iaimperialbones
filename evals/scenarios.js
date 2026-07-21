@@ -236,6 +236,69 @@ const scenarios = [
     },
 
     {
+        nome: 'recompra-reconhece-recorrente',
+        descricao: 'Cliente que já comprou volta (lead novo, mas há histórico) — deve reconhecer e não pedir o nome.',
+        historicoCliente: {
+            nome: 'Carlos', totalPedidos: 1, ultimoPedido: '2026-05-10',
+            pedidos: [{ data: '2026-05-10', codigo: 'IB_TRUCK', produto: 'Trucker', quantidade: 50, tecnica: 'Bordado 3D', corPreferencia: 'preto', usoEvento: 'uniforme' }]
+        },
+        turnos: [
+            'Oi! Aqui é o Carlos de novo, adorei os bonés da última vez'
+        ],
+        assert: (ctx) => [
+            { desc: 'respondeu', pass: !!(ctx.respostas.join('').trim()) },
+            { desc: 'reconheceu o cliente (nome ou pedido anterior)', pass: /carlos|de novo|novamente|trucker|últim|anterior/i.test(ctx.textoTudo) },
+            { desc: 'não pediu o nome de novo', pass: !/com quem eu falo|qual (é |e )?o seu nome|qual seu nome/i.test(ctx.textoTudo) }
+        ]
+    },
+
+    {
+        nome: 'recompra-reabre-pos-fechamento',
+        descricao: 'Cliente com pedido JÁ fechado quer novo pedido — deve reabrir a qualificação (iniciar_novo_pedido).',
+        estadoInicial: {
+            nome: 'Carlos', tipoAtendimento: 'compra', finalizado: true, qualificacaoCompleta: true,
+            quantidade: 50, usoEvento: 'uniforme', modeloEscolhido: 'IB_TRUCK', tecnica: 'Bordado 3D', corPreferencia: 'preto',
+            conversationHistory: [
+                { role: 'user', content: 'quero 50 trucker bordado preto pra equipe' },
+                { role: 'assistant', content: 'Fechado, Carlos! Já passei pro nosso consultor finalizar 🙌' }
+            ]
+        },
+        historicoCliente: {
+            nome: 'Carlos', totalPedidos: 1, ultimoPedido: '2026-05-10',
+            pedidos: [{ data: '2026-05-10', codigo: 'IB_TRUCK', produto: 'Trucker', quantidade: 50, tecnica: 'Bordado 3D', corPreferencia: 'preto', usoEvento: 'uniforme' }]
+        },
+        turnos: [
+            'Show, adorei o resultado! Quero fazer outro pedido, mais uns 60 bonés'
+        ],
+        assert: (ctx) => [
+            { desc: 'chamou iniciar_novo_pedido', pass: ctx.chamou('iniciar_novo_pedido') },
+            { desc: 'reabriu (finalizado = false)', pass: ctx.leadData.finalizado === false },
+            { desc: 'preservou o nome (Carlos)', pass: ctx.leadData.nome === 'Carlos' }
+        ]
+    },
+
+    {
+        nome: 'pos-pedido-duvida-nao-reabre',
+        descricao: 'Cliente com pedido fechado só tira uma dúvida — NÃO deve reabrir a qualificação.',
+        estadoInicial: {
+            nome: 'Carlos', tipoAtendimento: 'compra', finalizado: true, qualificacaoCompleta: true,
+            quantidade: 50, modeloEscolhido: 'IB_TRUCK',
+            conversationHistory: [
+                { role: 'user', content: 'quero 50 trucker' },
+                { role: 'assistant', content: 'Fechado! Já passei pro consultor 🙌' }
+            ]
+        },
+        turnos: [
+            'Só uma dúvida: qual era mesmo o prazo de entrega?'
+        ],
+        assert: (ctx) => [
+            { desc: 'respondeu à dúvida', pass: !!(ctx.respostas.join('').trim()) },
+            { desc: 'NÃO reabriu pedido', pass: !ctx.chamou('iniciar_novo_pedido') },
+            { desc: 'pedido segue finalizado', pass: ctx.leadData.finalizado === true }
+        ]
+    },
+
+    {
         nome: 'preco-exato-por-material',
         descricao: 'Cliente informa o nível/material (premium/supercap) — preço deve ser EXATO, sem range.',
         turnos: [

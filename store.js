@@ -10,12 +10,14 @@
 
 const REDIS_URL    = process.env.REDIS_URL || '';
 const PREFIX       = process.env.REDIS_PREFIX || 'imperialbones';
-const LEAD_TTL_SEG = 60 * 60 * 24 * 30; // 30 dias — conversas paradas expiram sozinhas
+const LEAD_TTL_SEG = 60 * 60 * 24 * 30;   // 30 dias — conversas paradas expiram sozinhas
+const CLIENTE_TTL_SEG = 60 * 60 * 24 * 365; // 365 dias — memória de cliente p/ recompra (Fase 4)
 
 let redis = null;
 let usingRedis = false;
 const mem = new Map();        // fallback: estado das conversas
 const memLeads = [];          // fallback: leads finalizados
+const memClientes = new Map();// fallback: memória de cliente (recompra)
 
 if (REDIS_URL) {
     try {
@@ -32,6 +34,7 @@ if (REDIS_URL) {
 
 const leadKey      = (chatId) => `${PREFIX}:lead:${chatId}`;
 const leadsListKey = `${PREFIX}:leads`;
+const clienteKey   = (chatId) => `${PREFIX}:cliente:${chatId}`;
 
 function isRedis() { return usingRedis; }
 
@@ -100,4 +103,42 @@ async function appendLeadFinalizado(registro) {
     memLeads.push(registro);
 }
 
-module.exports = { isRedis, getLead, saveLead, deleteLead, appendLeadFinalizado, scanLeadIds };
+// =============================================================
+//  MEMÓRIA DE CLIENTE (Fase 4 — recompra)
+//  Registro durável por contato (sobrevive ao TTL da conversa), com o
+//  histórico de pedidos. Usado para reconhecer quem já comprou e sugerir
+//  recompra/upsell.
+// =============================================================
+async function getCliente(chatId) {
+    if (usingRedis) {
+        try {
+            const s = await redis.get(clienteKey(chatId));
+            return s ? JSON.parse(s) : null;
+        } catch (e) {
+            console.error('❌ getCliente:', e.message);
+            return memClientes.get(chatId) || null;
+        }
+    }
+    return memClientes.get(chatId) || null;
+}
+
+// Anexa um pedido ao histórico do cliente (cria o registro se ainda não existe).
+async function registrarPedidoCliente(chatId, { nome, pedido } = {}) {
+    let rec = await getCliente(chatId);
+    if (!rec) rec = { chatId, nome: null, primeiroContato: (pedido && pedido.data) || null, totalPedidos: 0, pedidos: [] };
+    if (nome && !rec.nome) rec.nome = nome;
+    if (pedido) {
+        rec.pedidos.push(pedido);
+        rec.ultimoPedido = pedido.data || rec.ultimoPedido;
+    }
+    rec.totalPedidos = rec.pedidos.length;
+
+    if (usingRedis) {
+        try { await redis.set(clienteKey(chatId), JSON.stringify(rec), 'EX', CLIENTE_TTL_SEG); return rec; }
+        catch (e) { console.error('❌ registrarPedidoCliente:', e.message); }
+    }
+    memClientes.set(chatId, rec);
+    return rec;
+}
+
+module.exports = { isRedis, getLead, saveLead, deleteLead, appendLeadFinalizado, scanLeadIds, getCliente, registrarPedidoCliente };

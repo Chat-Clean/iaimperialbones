@@ -156,6 +156,14 @@ const TOOLS = [
     {
         type: 'function',
         function: {
+            name: 'iniciar_novo_pedido',
+            description: 'Reinicia a qualificação para um NOVO pedido, mantendo o nome do cliente. Use quando um cliente que JÁ fechou um pedido (ou cliente recorrente) sinalizar que quer comprar de novo. Depois de chamar, qualifique o novo pedido do zero — mas aproveite o histórico dele para agilizar e sugerir.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'transferir_consultor',
             description: 'Finaliza a qualificação e transfere o lead para o consultor humano. Use APENAS quando já tiver os dados essenciais (nome, quantidade válida, finalidade, modelo) e o cliente estiver pronto para fechar, OU em pedidos grandes/negociações especiais.',
             parameters: {
@@ -301,6 +309,25 @@ const EXECUTORES = {
             : { ok: false, motivo: 'Não foi possível gerar agora. Diga que o consultor manda um mockup caprichado.' };
     },
 
+    async iniciar_novo_pedido(args, ctx) {
+        const { leadData } = ctx;
+        const nome = leadData.nome; // preserva a identidade do cliente
+        const limpar = [
+            'quantidade', 'usoEvento', 'prazoRecebimento', 'modeloEscolhido', 'tipoChapeu',
+            'material', 'temArte', 'quandoEnviaArte', 'tecnica', 'tipoRegulador', 'corPreferencia',
+            'avisarMinimo', 'modelosEnviados', 'coresEnviadas', 'logoUrl', 'analiseImagem',
+            'qualificacaoCompleta', 'motivoTransferencia', 'jaViuModelos'
+        ];
+        for (const c of limpar) delete leadData[c];
+        leadData.finalizado = false;
+        leadData.tipoAtendimento = 'compra';
+        leadData.clienteRecorrente = true;
+        leadData.etapas = {};
+        leadData.etapaFunil = 'contato';
+        marcarEtapa(leadData, 'contato', ctx.agora);
+        return { ok: true, obs: 'Novo pedido iniciado (nome mantido). Qualifique do zero, mas use o histórico do cliente para agilizar e sugerir (upsell moderado).' };
+    },
+
     async transferir_consultor(args, ctx) {
         const { leadData, io, chatId } = ctx;
         leadData.finalizado = true;
@@ -310,9 +337,29 @@ const EXECUTORES = {
         marcarEtapa(leadData, 'finalizado', ctx.agora);
         await io.enviarMensagem(chatId, 'Transferir para o departamento Comercial');
         await io.notificarEquipe(leadData, chatId, args.motivo && /100|grande|especial/i.test(args.motivo) ? { tagExtra: 'Transbordo' } : {});
+        // Fase 4: grava o pedido na memória do cliente (para reconhecimento/recompra futura)
+        if (io.registrarPedidoCliente) {
+            try { await io.registrarPedidoCliente(chatId, { nome: leadData.nome, pedido: montarPedido(leadData, ctx.agora) }); }
+            catch (e) { console.error('❌ registrarPedidoCliente:', e.message); }
+        }
         return { ok: true, obs: 'Lead transferido. Encerre com uma mensagem calorosa dizendo que o consultor vai continuar.' };
     }
 };
+
+// Resumo do pedido para o histórico durável do cliente (Fase 4).
+function montarPedido(l, agora) {
+    return {
+        data: agora,
+        codigo: l.modeloEscolhido || null,
+        produto: l.modeloEscolhido ? (CATALOGO_MODELOS[l.modeloEscolhido]?.nome || l.modeloEscolhido) : null,
+        quantidade: l.quantidade || null,
+        usoEvento: l.usoEvento || null,
+        material: l.material || null,
+        tecnica: l.tecnica || null,
+        tipoRegulador: l.tipoRegulador || null,
+        corPreferencia: l.corPreferencia || null
+    };
+}
 
 // Resumo compacto do estado, devolvido nas tool responses
 function estadoResumido(l) {
@@ -350,7 +397,7 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
         : mensagemCliente;
 
     const messages = [
-        { role: 'system', content: promptAgente(leadData) },
+        { role: 'system', content: promptAgente(leadData, contexto) },
         ...historico,
         { role: 'user', content: conteudoUsuario }
     ];

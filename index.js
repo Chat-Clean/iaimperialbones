@@ -752,7 +752,9 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             return;
         }
 
-        if (leadData.finalizado) {
+        // No modo agente, mensagens de clientes com pedido finalizado também passam pelo
+        // agente (que reconhece o cliente e reabre um novo pedido se ele quiser — Fase 4).
+        if (!AGENT_MODE && leadData.finalizado) {
             // Pedido já encaminhado: ainda respondemos dúvidas pontuais de forma natural,
             // sem repetir o resumo nem refazer o funil.
             const histPos = leadData.conversationHistory.slice(-30).map(h => ({
@@ -851,9 +853,13 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
                 notificarEquipe,
                 gerarMockup,
                 recomendarModelos,
-                cartelasDoLead
+                cartelasDoLead,
+                registrarPedidoCliente: store.registrarPedidoCliente
             };
-            const contexto = { analiseImagem: leadData.analiseImagem };
+            // Memória de cliente (Fase 4): reconhece quem já comprou
+            let historicoCliente = null;
+            try { historicoCliente = await store.getCliente(chatId); } catch (_) {}
+            const contexto = { analiseImagem: leadData.analiseImagem, historico: historicoCliente };
             leadData.analiseImagem = null; // já consumido nesta mensagem
 
             const { resposta } = await rodarAgente({
@@ -1167,6 +1173,23 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
 
             await enviarMensagem(chatId, 'Transferir para o departamento Comercial');
             await notificarEquipe(leadData, chatId);
+            // Fase 4: grava o pedido na memória durável do cliente (para recompra futura)
+            try {
+                await store.registrarPedidoCliente(chatId, {
+                    nome: leadData.nome,
+                    pedido: {
+                        data: obterDataHoraBrasilia().toISOString(),
+                        codigo: leadData.modeloEscolhido || null,
+                        produto: leadData.modeloEscolhido ? (CATALOGO_MODELOS[leadData.modeloEscolhido]?.nome || leadData.modeloEscolhido) : null,
+                        quantidade: leadData.quantidade || null,
+                        usoEvento: leadData.usoEvento || null,
+                        material: leadData.material || null,
+                        tecnica: leadData.tecnica || null,
+                        tipoRegulador: leadData.tipoRegulador || null,
+                        corPreferencia: leadData.corPreferencia || null
+                    }
+                });
+            } catch (e) { console.error('❌ registrarPedidoCliente (legado):', e.message); }
         } else if (!leadData.finalizado) {
             agendarFollowUpReativacao(chatId, leadData);
         }

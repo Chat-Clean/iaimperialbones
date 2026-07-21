@@ -294,7 +294,7 @@ ${imagensForamEnviadas ? '- ATENÇÃO: Imagens acabaram de ser enviadas. NÃO re
 //  NÃO traz a tabela de preços: preço vem SEMPRE da ferramenta
 //  consultar_preco (a IA nunca inventa valor).
 // -------------------------------------------------------------
-function promptAgente(leadData) {
+function promptAgente(leadData, contexto = {}) {
     const nomes = nomesAmigaveis(leadData);
     const coletado = (rotulo, valor) => valor ? `${rotulo}: ${valor}` : null;
     const dados = [
@@ -311,6 +311,32 @@ function promptAgente(leadData) {
         coletado('Regulador', nomes.regulador),
         coletado('Cor', leadData.corPreferencia)
     ].filter(Boolean);
+
+    // CLIENTE RECORRENTE (Fase 4) — memória durável de quem já comprou
+    const hist = contexto.historico;
+    let blocoRecorrente = '';
+    if (hist && Array.isArray(hist.pedidos) && hist.pedidos.length) {
+        const ult = hist.pedidos[hist.pedidos.length - 1];
+        const resumoUlt = [
+            ult.quantidade ? `${ult.quantidade} un.` : null,
+            ult.produto || null,
+            ult.tecnica || null,
+            ult.corPreferencia ? `cor ${ult.corPreferencia}` : null
+        ].filter(Boolean).join(', ');
+        blocoRecorrente = `
+CLIENTE RECORRENTE (já comprou antes — reconheça com carinho):
+- Nome: ${hist.nome || leadData.nome || 'cliente'} | Pedidos anteriores: ${hist.totalPedidos || hist.pedidos.length}
+- Último pedido: ${resumoUlt || 'sem detalhes'}${hist.ultimoPedido ? ` (em ${String(hist.ultimoPedido).slice(0, 10)})` : ''}
+- Cumprimente pelo nome e referencie o último pedido de forma natural ("que bom te ver de novo!"). NÃO peça o nome de novo.
+- Upsell MODERADO: quando fizer sentido, ofereça recompra do mesmo item ou um complemento — sem insistir. Deixe o cliente conduzir.`;
+    }
+
+    // Estado de pós-fechamento: o pedido anterior já foi para o consultor
+    const blocoPosFechamento = leadData.finalizado ? `
+PEDIDO ANTERIOR JÁ TRANSFERIDO:
+- O pedido que este cliente montou já foi encaminhado ao consultor.
+- Se ele mandar só uma dúvida, responda de forma útil (o consultor cuida do fechamento). NÃO refaça a qualificação.
+- Se ele quiser fazer um NOVO pedido (ex.: "quero fazer outro", "vou querer mais", "preciso de mais bonés"), chame iniciar_novo_pedido ANTES de qualificar — aí conduza o novo pedido do zero, aproveitando o histórico.` : '';
 
     return `Você é a IA de atendimento da Imperial Bonés Personalizados no WhatsApp. Você conduz a conversa como uma pessoa de verdade e usa FERRAMENTAS para agir (mostrar fotos, consultar preço, gerar prévia, transferir).
 
@@ -343,6 +369,7 @@ QUANDO USAR CADA FERRAMENTA:
 - consultar_preco: SEMPRE antes de dizer qualquer valor. Apresente o resultado de forma consultiva.
 - gerar_mockup: quando o cliente pedir para ver a logo aplicada (precisa de arte enviada + modelo).
 - transferir_consultor: quando a qualificação estiver completa e o cliente pronto para fechar, ou em pedidos grandes (acima de ~100 un.) que pedem negociação especial. Confirme o resumo do pedido ANTES, uma única vez.
+- iniciar_novo_pedido: quando um cliente que JÁ fechou um pedido quiser comprar de novo. Chame ANTES de qualificar o novo pedido (mantém o nome, zera o resto).
 - Ao chamar uma ferramenta que envia fotos, escreva também uma frase curta de conversa (ela é enviada antes das fotos).
 
 PRODUTOS (catálogo):
@@ -359,6 +386,8 @@ PRAZOS: bonés/chapéus/viseiras até 21 dias úteis; bolsas/ecobag até 15 dias
 PAGAMENTO: PIX/Boleto 50%+50%; cartão em até 12x. Envio por conta do cliente, após quitação.
 
 DADOS JÁ COLETADOS (não pergunte de novo): ${dados.length ? dados.join(' | ') : 'nenhum ainda'}.
+${blocoRecorrente}
+${blocoPosFechamento}
 ${leadData.avisarMinimo ? `ATENÇÃO: o cliente pediu ${leadData.avisarMinimo} un., abaixo do mínimo — trate isso antes de qualquer coisa.` : ''}
 ${leadData.conversationHistory && leadData.conversationHistory.length === 0 ? 'Esta é a PRIMEIRA mensagem: cumprimente, apresente rapidamente a Imperial Bonés e pergunte o nome do cliente.' : ''}`;
 }

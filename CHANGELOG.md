@@ -1,5 +1,32 @@
 # Changelog — IA Imperial Bonés Personalizados
 
+## [1.4.0] — 2026-07-21
+
+### 🔁 Fase 4 — Recompra (memória de cliente)
+
+Reconhece quem já comprou, guarda o histórico de pedidos e reabre a qualificação
+para novos pedidos, com upsell moderado. Ativo no modo agente (`AGENT_MODE=true`);
+a persistência do histórico acontece também no fluxo legado (dados acumulam sempre).
+
+- **`store.js`**: memória de cliente durável em `imperialbones:cliente:{chatId}`
+  (TTL 365 dias, sobrevive ao TTL da conversa). `getCliente()` e
+  `registrarPedidoCliente(chatId, {nome, pedido})` — nome, primeiro contato,
+  último pedido, total e histórico de pedidos. Fallback em memória.
+- **`agente.js`**: nova ferramenta **`iniciar_novo_pedido`** (zera os campos do pedido,
+  mantém o nome, reabre a qualificação) — usada quando um cliente que já fechou quer
+  comprar de novo. `transferir_consultor` grava o pedido na memória do cliente.
+- **`prompts.js`**: bloco **CLIENTE RECORRENTE** (nome, nº de pedidos, resumo do último)
+  + guia de pós-fechamento (só reabre em novo pedido; dúvida continua no pós-pedido)
+  + upsell moderado.
+- **`index.js`**: no modo agente, clientes com pedido finalizado passam a ser tratados
+  pelo agente (reconhecimento + reabertura); injeta o histórico do cliente no contexto;
+  persiste o pedido no fechamento (agente e legado).
+- **Gatilho de recompra**: detecção de intenção de compra (dúvida ≠ novo pedido).
+- **evals**: +3 cenários (reconhecimento de recorrente, reabertura pós-fechamento,
+  dúvida pós-pedido que NÃO reabre) → **17 cenários / 54 asserções** verdes no `gpt-4o`.
+
+---
+
 ## [1.3.0] — 2026-07-21
 
 ### 🤖 Fase 3 — Núcleo com tool-calling + evals + analytics de funil
