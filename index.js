@@ -422,6 +422,32 @@ async function gerarRespostaIA(leadData, mensagemCliente, proximoCampo, historic
     return completion.choices[0].message.content.trim();
 }
 
+// Resposta para quando o pedido JÁ foi encaminhado ao consultor: tira dúvidas
+// pontuais de forma natural, sem repetir o resumo nem refazer a qualificação.
+async function gerarRespostaPosPedido(leadData, mensagemCliente, historicoRecente = []) {
+    const fallback = 'Seu pedido já está com o nosso consultor, que vai falar com você pra finalizar! Se tiver qualquer dúvida, pode mandar aqui que eu ajudo. 😊';
+    try {
+        const prompt = `O pedido deste cliente já foi montado e ENCAMINHADO ao consultor. Ele acabou de dizer: "${String(mensagemCliente).replace(/[<>]/g, '').substring(0, 600)}".
+Responda de forma breve, calorosa e útil (registro de WhatsApp, sem markdown, no máximo 1 emoji):
+- Se for uma dúvida que você consegue responder com o que sabe da Imperial Bonés, responda.
+- Se depender do consultor (preço final fechado, prazo exato, mudança no pedido), diga que o consultor já vai falar com ele pra resolver.
+NÃO refaça perguntas de qualificação e NÃO repita o resumo do pedido.`;
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: 'Você é atendente consultivo da Imperial Bonés. Escrita natural, curta, registro de WhatsApp.' },
+                ...historicoRecente,
+                { role: 'user', content: prompt }
+            ],
+            temperature: 0.6
+        });
+        return completion.choices[0].message.content.trim() || fallback;
+    } catch (e) {
+        console.error('❌ Erro na resposta pós-pedido:', e.message);
+        return fallback;
+    }
+}
+
 // =============================================================
 //  IA — VISÃO (a IA "enxerga" a imagem enviada pelo cliente)
 // =============================================================
@@ -691,7 +717,15 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
         }
 
         if (leadData.finalizado) {
-            await enviarMensagem(chatId, 'Já estou encaminhando seu atendimento! Um consultor retornará em instantes. 😊');
+            // Pedido já encaminhado: ainda respondemos dúvidas pontuais de forma natural,
+            // sem repetir o resumo nem refazer o funil.
+            const histPos = leadData.conversationHistory.slice(-30).map(h => ({
+                role: h.role === 'user' ? 'user' : 'assistant', content: h.content
+            }));
+            const respPos = await gerarRespostaPosPedido(leadData, texto, histPos);
+            await enviarMensagensQuebradas(chatId, respPos);
+            leadData.conversationHistory.push({ role: 'user', content: texto });
+            leadData.conversationHistory.push({ role: 'assistant', content: respPos });
             return;
         }
 
@@ -928,6 +962,19 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
             if (extraido.usoEvento && leadData.quantidade && !leadData.prazoRecebimento && !leadData.jaViuModelos) {
                 // Não força aqui — espera o prazo antes de mostrar os modelos
             }
+        }
+
+        // GUARD — pedido mínimo. Piso: 25 un (mínimo 30; 25 com +R$1,50/un; ou combos 20+20 / 25+25).
+        // Abaixo disso não avança: zera a quantidade e sinaliza para a IA tratar a objeção no estilo dela.
+        const qtdNum = parseInt(leadData.quantidade, 10);
+        if (Number.isFinite(qtdNum) && qtdNum > 0 && qtdNum < 25) {
+            leadData.avisarMinimo = qtdNum;
+            leadData.quantidade = null;
+            leadData.jaViuModelos = false;
+            if (extraido) { extraido.querVerModelos = false; extraido.querVerTecnicas = false; extraido.querVerRegulador = false; extraido.querVerCores = false; }
+            console.log(`🚧 Pedido mínimo: cliente pediu ${qtdNum} un (< 25) — segurando o avanço`);
+        } else if (leadData.avisarMinimo && Number.isFinite(qtdNum) && qtdNum >= 25) {
+            leadData.avisarMinimo = null; // cliente ajustou para quantidade válida
         }
 
         // Resposta afirmativa para arte
