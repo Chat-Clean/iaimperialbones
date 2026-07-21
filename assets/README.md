@@ -19,11 +19,15 @@ trucker.png          → IB_TRUCK
 dad-hat.png          → IB_DAD
 chapeu-protecao.png  → IB_CHAP (chapéu principal = líder de vendas)
 viseira.png          → IB_VIS
+sacochila.png        → IB_BOLSA (líder de vendas entre as bolsas)
 ```
+
+✅ Todos os 6 modelos do `CATALOGO_MODELOS` têm imagem.
 
 Extras na pasta, ainda NÃO ligados no código:
 ```
 6gomos.png            (boné 6 gomos)
+ecobag.png            (bolsa — alternativa à sacochila)
 chapeu-bucket.png
 chapeu-juta.png
 chapeu-palha.png
@@ -31,11 +35,6 @@ chapeu-cata-ovo.png
 meia-lua.png          (Linha Básica)
 linha-essencial.png   (composto Trucker+Americano+6 Gomos Oxford)
 outros-premium.png    (composto Esportivo/Ciclista/Five Panel)
-```
-
-**Falta** (o `data.js` ainda aponta pra `.jpeg` inexistente):
-```
-bolsa.png     → IB_BOLSA
 ```
 
 ## 📂 prova-social/
@@ -79,6 +78,7 @@ alfaiataria.png
 brim.png
 camurca.png
 especiais.png        (materiais especiais para aba)
+tactel.jpeg          (linha básica — 100% poliéster)
 ```
 
 > Oxford não tem cartela própria no catálogo (usa cores equivalentes à Tela). Estas imagens ainda NÃO estão ligadas no código — `TECIDOS_E_CORES` só tem as cores em texto. Para o bot enviar as cartelas, adicionar um campo de arquivo em cada tecido + um gatilho no fluxo (ex.: quando o cliente pergunta as cores).

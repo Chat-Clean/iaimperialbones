@@ -103,7 +103,7 @@ const CATALOGO_MODELOS = {
         descricao: 'Linha de acessórios personalizados com foco em brindes corporativos e utilitários de alta resistência. Prazo especial: 15 dias úteis.',
         estilo: 'Funcional e resistente.',
         precoReferencia: 'Consulte para orçamento personalizado',
-        arquivo: './assets/modelos/bolsa.jpeg',
+        arquivo: './assets/modelos/sacochila.png',
         keywords: ['bolsa', 'sacola', 'brinde', 'utilitario', 'resistente', 'corporativo', 'ecobag', 'bag', 'bolsa personalizada']
     }
 };
