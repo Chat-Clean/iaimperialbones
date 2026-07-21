@@ -7,17 +7,38 @@ modelos/       → fotos dos produtos
 tecnicas/      → exemplos das técnicas de personalização
 reguladores/   → opções de regulador
 cores-tecidos/ → cartelas de cores por tecido
+prova-social/  → prints de avaliações/depoimentos
 ```
 
-## 📂 modelos/ (6 arquivos obrigatórios)
+## 📂 modelos/ (produtos que o bot envia)
+
+Ligados no `data.js` (campo `arquivo` de cada modelo):
+```
+americano.png        → IB_SNAP (Snapback / Americano)
+trucker.png          → IB_TRUCK
+dad-hat.png          → IB_DAD
+chapeu-protecao.png  → IB_CHAP (chapéu principal = líder de vendas)
+```
+
+Extras na pasta, ainda NÃO ligados no código (chapéus e 6 gomos):
+```
+6gomos.png
+chapeu-bucket.png
+chapeu-juta.png
+chapeu-palha.png
+chapeu-cata-ovo.png
+```
+
+**Faltam** (o `data.js` ainda aponta pra `.jpeg` inexistente):
+```
+viseira.png   → IB_VIS
+bolsa.png     → IB_BOLSA
+```
+
+## 📂 prova-social/
 
 ```
-snapback.jpeg
-trucker.jpeg
-dad-hat.jpeg
-chapeu.jpeg
-viseira.jpeg
-bolsa.jpeg
+depoimentos.png   (print de avaliações do Google — não ligado no código)
 ```
 
 ## 📂 tecnicas/ (7 arquivos obrigatórios)

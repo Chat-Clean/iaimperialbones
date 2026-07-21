@@ -55,7 +55,7 @@ const CATALOGO_MODELOS = {
         estilo: 'Moderno e versátil — do casual ao corporativo.',
         niveis: ['basico', 'essencial', 'premium'],
         precoReferencia: 'A partir de R$ 8,99/unidade (básico, 30-100 un.)',
-        arquivo: './assets/modelos/snapback.jpeg',
+        arquivo: './assets/modelos/americano.png',
         keywords: ['snapback', 'snap', 'americano', 'aba reta', 'estruturado', '6 gomos', 'seis gomos']
     },
     'IB_TRUCK': {
@@ -65,7 +65,7 @@ const CATALOGO_MODELOS = {
         estilo: 'Clássico e despojado com muito conforto — nosso modelo mais vendido.',
         niveis: ['basico', 'essencial', 'premium'],
         precoReferencia: 'A partir de R$ 8,99/unidade (básico, 30-100 un.)',
-        arquivo: './assets/modelos/trucker.jpeg',
+        arquivo: './assets/modelos/trucker.png',
         keywords: ['trucker', 'tela', 'ventilacao', 'telinha', 'traseira de tela', 'caminhoneiro']
     },
     'IB_DAD': {
@@ -75,7 +75,7 @@ const CATALOGO_MODELOS = {
         estilo: 'Casual premium — do dia a dia ao streetwear.',
         niveis: ['premium'],
         precoReferencia: 'A partir de R$ 19,99/unidade (30-100 un.)',
-        arquivo: './assets/modelos/dad-hat.jpeg',
+        arquivo: './assets/modelos/dad-hat.png',
         keywords: ['dad hat', 'copa baixa', 'casual', 'mole', 'relaxado', 'sem estrutura', 'influencer', 'streetwear', 'brim']
     },
     'IB_CHAP': {
@@ -84,7 +84,7 @@ const CATALOGO_MODELOS = {
         descricao: 'Linha completa: Chapéu de Proteção (Oxford, botões laterais + cordão — LÍDER DE VENDAS entre os chapéus), Bucket Hat (fashion), Chapéu de Juta (fita colorida), Chapéu de Palha (patch couro sintético, forro sublimável) e Cata Ovo (viseira ampla). Todos com mínimo de 30 unidades.',
         estilo: 'Sofisticado, versátil e funcional.',
         precoReferencia: 'Bonés de aba: a partir de R$ 8,99/un | Chapéu de Juta/Agro: a partir de R$ 44,90/un',
-        arquivo: './assets/modelos/chapeu.jpeg',
+        arquivo: './assets/modelos/chapeu-protecao.png',
         keywords: ['chapeu', 'chapéu', 'aba larga', 'sol', 'campo', 'agro', 'produtor', 'rural', 'fazenda',
                    'bucket', 'bucket hat', 'juta', 'palha', 'cata ovo', 'proteção', 'proteção solar', 'sertanejo']
     },
