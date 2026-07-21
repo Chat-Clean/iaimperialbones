@@ -128,8 +128,8 @@ async function ccPush(number, payloadExtra = {}) {
 }
 
 // Notifica a equipe (e registra o resumo) quando um lead é qualificado.
-// Substitui o antigo criarLeadKommo — na ChatClean o "lead" já é o próprio
-// contato/ticket na plataforma; aqui só entregamos o resumo estruturado.
+// Na ChatClean o "lead" já é o próprio contato/ticket na plataforma;
+// aqui só entregamos o resumo estruturado.
 async function notificarEquipe(leadData, chatId, opcoes = {}) {
     const nomeProduto = leadData.modeloEscolhido
         ? (CATALOGO_MODELOS[leadData.modeloEscolhido]?.nome || leadData.modeloEscolhido)
@@ -1035,8 +1035,7 @@ async function processarMensagem({ chatId, texto, tipo, mediaBase64, mediaUrl, m
     }
 }
 
-// (Endpoint /salesbot removido — era específico do Kommo. Na ChatClean a saída
-//  é feita diretamente via Push API, sem return_url nem handlers.)
+// (Na ChatClean a saída é feita diretamente via Push API, sem return_url nem handlers.)
 
 // =============================================================
 //  WEBHOOK
