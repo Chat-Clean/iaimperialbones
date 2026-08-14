@@ -298,6 +298,180 @@ const scenarios = [
         ]
     },
 
+    // ---------------------------------------------------------
+    //  Cenários de VARIAÇÃO — robustez a erros de digitação,
+    //  gírias, números por extenso e nomes coloquiais de produto.
+    // ---------------------------------------------------------
+    {
+        nome: 'variacao-erros-digitacao',
+        descricao: 'Mensagem cheia de erros de ortografia — deve entender qtd, produto e finalidade mesmo assim.',
+        turnos: [
+            'boa tarde queria faze um orsamento',
+            'meu nome e Roberta',
+            'presiso de 50 bonez truker persolanizado pra minha empreza'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou dados', pass: ctx.chamou('registrar_dados') },
+            { desc: 'quantidade = 50 (apesar dos erros)', pass: ctx.leadData.quantidade === 50 },
+            { desc: 'entendeu o produto (trucker) apesar de "truker"', pass: ctx.leadData.modeloEscolhido === 'IB_TRUCK' || /trucker/i.test(ctx.textoTudo) },
+            { desc: 'extraiu o nome (Roberta)', pass: /roberta/i.test(ctx.leadData.nome || '') },
+            { desc: 'não devolveu erro nem travou', pass: !!(ctx.respostas.join('').trim()) }
+        ]
+    },
+
+    {
+        nome: 'variacao-numero-por-extenso',
+        descricao: 'Quantidade escrita por extenso ("cinquenta") — deve registrar como número.',
+        turnos: [
+            'Oi, aqui é o Davi. Quero cinquenta bonés pro meu evento de música'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou dados', pass: ctx.chamou('registrar_dados') },
+            { desc: 'quantidade = 50 (por extenso)', pass: ctx.leadData.quantidade === 50 },
+            { desc: 'extraiu a finalidade (evento)', pass: !!ctx.leadData.usoEvento }
+        ]
+    },
+
+    {
+        nome: 'variacao-girias-abreviacoes',
+        descricao: 'Gírias e abreviações de WhatsApp (vc, qro, qnt, blz) — deve entender e consultar o preço real.',
+        turnos: [
+            'eae blz? aki é o Vitor',
+            'qro sabe qnt custa o trucker, preciso de 60 unidade p empresa, é uniforme'
+        ],
+        assert: (ctx) => {
+            const precos = ctx.toolsDe('consultar_preco');
+            return [
+                { desc: 'quantidade = 60', pass: ctx.leadData.quantidade === 60 },
+                { desc: 'chamou consultar_preco (não inventou valor)', pass: ctx.chamou('consultar_preco') },
+                { desc: 'consultar_preco retornou ok', pass: precos.some(t => t.resultado && t.resultado.ok) },
+                { desc: 'respondeu em tom natural', pass: !!(ctx.respostas.join('').trim()) }
+            ];
+        }
+    },
+
+    {
+        nome: 'variacao-nome-coloquial-produto',
+        descricao: 'Cliente descreve o produto sem saber o nome ("boné de caminhoneiro com telinha") — deve mapear para o Trucker.',
+        turnos: [
+            'Oi, sou a Camila. Quero 40 daquele boné de caminhoneiro, sabe? Com a telinha atrás. É pra minha lanchonete'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou dados', pass: ctx.chamou('registrar_dados') },
+            { desc: 'quantidade = 40', pass: ctx.leadData.quantidade === 40 },
+            { desc: 'mapeou para o Trucker (estado ou resposta)', pass: ctx.leadData.modeloEscolhido === 'IB_TRUCK' || /trucker/i.test(ctx.textoTudo) }
+        ]
+    },
+
+    {
+        nome: 'variacao-minimo-por-extenso',
+        descricao: 'Quantidade abaixo do mínimo escrita por extenso ("quinze") — o guard deve barrar mesmo assim.',
+        turnos: [
+            'Oi, é o Fábio. Queria quinze bonés pra dar de brinde'
+        ],
+        assert: (ctx) => [
+            { desc: 'não aceitou quantidade abaixo do mínimo', pass: ctx.leadData.avisarMinimo === 15 || !(ctx.leadData.quantidade >= 25) },
+            { desc: 'NÃO transferiu', pass: !ctx.chamou('transferir_consultor') && ctx.leadData.finalizado !== true },
+            { desc: 'resposta menciona o mínimo (30/25/mínimo)', pass: /\b30\b|\b25\b|m[ií]nimo/.test(ctx.textoTudo) }
+        ]
+    },
+
+    {
+        nome: 'variacao-prazo-urgente',
+        descricao: 'Cliente com prazo apertado (1 semana) — deve registrar o prazo e ser honesto sobre os 21 dias úteis, sem prometer o impossível.',
+        turnos: [
+            'Oi, sou o Igor. Preciso de 50 bonés trucker pra um evento da empresa',
+            'Só que é urgente, preciso em 1 semana no máximo. Dá tempo?'
+        ],
+        assert: (ctx) => {
+            // Só conta como promessa indevida se a frase NÃO for negativa:
+            // "não conseguimos entregar em 1 semana" é a resposta certa.
+            const frasesAfirmativas = ctx.textoTudo
+                .split(/[.!?\n]/)
+                .filter(f => !/\bn[ãa]o\b|infelizmente|inviáv|impossív/i.test(f));
+            const prometeu = frasesAfirmativas.some(f =>
+                /(consigo|conseguimos|entregamos|fica pronto|chega|damos conta)[^,;]{0,40}(em|at[ée])[^,;]{0,15}(1 semana|uma semana|7 dias|sete dias)/i.test(f)
+            );
+            return [
+                { desc: 'registrou o prazo informado', pass: !!ctx.leadData.prazoRecebimento },
+                { desc: 'falou de prazo na resposta (dias/prazo/21)', pass: /prazo|dias?\b|\b21\b/i.test(ctx.textoTudo) },
+                { desc: 'não prometeu entrega em 1 semana', pass: !prometeu }
+            ];
+        }
+    },
+
+    {
+        nome: 'variacao-prazo-sem-pressa',
+        descricao: 'Cliente sem pressa ("pode levar o tempo que precisar") — registra o prazo e segue o fluxo normalmente.',
+        turnos: [
+            'Oi, é a Lívia. Quero 30 bonés pra minha hamburgueria',
+            'Sobre prazo, sem pressa nenhuma, pode levar o tempo que precisar'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou o prazo (sem pressa)', pass: !!ctx.leadData.prazoRecebimento },
+            { desc: 'seguiu o fluxo (respondeu e não travou)', pass: !!(ctx.respostas.join('').trim()) },
+            { desc: 'não transferiu ainda (qualificação incompleta)', pass: ctx.leadData.finalizado !== true }
+        ]
+    },
+
+    {
+        nome: 'variacao-cores-multiplas',
+        descricao: 'Cliente quer mais de uma cor no pedido — deve registrar todas, não só a primeira.',
+        turnos: [
+            'Oi, sou o Nando. Quero 60 trucker pra minha barbearia',
+            'Quero metade preto e metade vermelho'
+        ],
+        assert: (ctx) => {
+            const cor = (ctx.leadData.corPreferencia || '').toLowerCase();
+            return [
+                { desc: 'registrou preferência de cor', pass: !!cor },
+                { desc: 'guardou as DUAS cores (preto e vermelho)', pass: /pret/.test(cor) && /vermelh/.test(cor) }
+            ];
+        }
+    },
+
+    {
+        nome: 'variacao-pede-ver-cores',
+        descricao: 'Cliente pergunta quais cores existem — deve enviar a cartela, não listar de cabeça.',
+        turnos: [
+            'Oi, é a Bia. Quero 40 trucker pra loja',
+            'Quais cores vocês têm? Me mostra',
+        ],
+        assert: (ctx) => [
+            { desc: 'chamou enviar_cartela_cores', pass: ctx.chamou('enviar_cartela_cores') },
+            { desc: 'enviou imagem de cartela', pass: ctx.log.imagens.some(i => /cartela/i.test(i.legenda || '')) }
+        ]
+    },
+
+    {
+        nome: 'variacao-logo-nao-tem',
+        descricao: 'Cliente NÃO tem logo — deve registrar temArte=nao e seguir sem travar (sem exigir arte).',
+        turnos: [
+            'Oi, sou o Caio. Quero 50 bonés pro meu food truck',
+            'Pode ser o trucker',
+            'Ainda não tenho logo, só tenho o nome do food truck. Tem problema?'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou temArte = nao', pass: ctx.leadData.temArte === 'nao' },
+            { desc: 'respondeu sem travar o atendimento', pass: !!(ctx.respostas.join('').trim()) },
+            { desc: 'não gerou mockup sem arte', pass: ctx.log.mockups === 0 }
+        ]
+    },
+
+    {
+        nome: 'variacao-logo-envia-depois',
+        descricao: 'Cliente tem a logo mas vai mandar depois — registra temArte=sim e quandoEnviaArte=depois, sem insistir.',
+        turnos: [
+            'Oi, é a Duda. Quero 35 trucker pra equipe de vendas',
+            'Tenho a logo sim, mas tá com o designer. Te mando amanhã, pode ser?'
+        ],
+        assert: (ctx) => [
+            { desc: 'registrou temArte = sim', pass: ctx.leadData.temArte === 'sim' },
+            { desc: 'registrou envio da arte = depois', pass: ctx.leadData.quandoEnviaArte === 'depois' },
+            { desc: 'aceitou numa boa (respondeu e seguiu)', pass: !!(ctx.respostas.join('').trim()) }
+        ]
+    },
+
     {
         nome: 'preco-exato-por-material',
         descricao: 'Cliente informa o nível/material (premium/supercap) — preço deve ser EXATO, sem range.',

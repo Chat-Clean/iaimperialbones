@@ -14,15 +14,11 @@ const {
     CATALOGO_MODELOS,
     OPCOES_TECNICAS,
     OPCOES_REGULADORES
-} = require('./data');
-const orcamento = require('./orcamento');
-const { promptAgente } = require('./prompts');
+} = require('../../domain/catalogo/Catalogo');
+const orcamento = require('../../domain/orcamento/MotorDeOrcamento');
+const { marcarEtapa, MODELOS_SEM_REGULADOR: MODELOS_SEM_REG } = require('../../domain/atendimento/Funil');
 
-// gpt-4o por padrão: os evals mostraram que o gpt-4o-mini é instável ao disparar
-// as ferramentas terminais (transferir/notificar). Ajuste via AGENT_MODEL se quiser.
-const MODELO_IA        = process.env.AGENT_MODEL || 'gpt-4o';
-const MAX_ITERACOES    = 6;   // trava de segurança contra loop de tool-calling
-const MODELOS_SEM_REG  = ['IB_VIS', 'IB_BOLSA', 'IB_CHAP'];
+const MAX_ITERACOES = 6;   // trava de segurança contra loop de tool-calling
 
 // Tradução dos códigos internos → nomes amigáveis (mantém o resumo da equipe legível)
 const NOMES_TECNICA = {
@@ -32,34 +28,6 @@ const NOMES_TECNICA = {
 };
 const NOMES_REGULADOR = { padrao: 'Padrão Plástico', metal1: 'Fivela Metálica Tipo 01', metal2: 'Fivela Metálica Tipo 02' };
 
-// -------------------------------------------------------------
-//  Funil — carimba as etapas para a análise posterior (Fase 3.3)
-// -------------------------------------------------------------
-const ORDEM_ETAPAS = ['contato', 'qualificando', 'modelo', 'tecnica', 'cor', 'orcamento', 'finalizado'];
-// Etapas lineares do funil para o relatório de analytics (orçamento é medido à parte,
-// pois pode ocorrer em pontos diferentes da conversa).
-const ETAPAS_FUNIL = ['contato', 'qualificando', 'modelo', 'tecnica', 'cor', 'finalizado'];
-
-function marcarEtapa(leadData, etapa, agora) {
-    if (!leadData.etapas) leadData.etapas = {};
-    if (!leadData.etapas[etapa]) leadData.etapas[etapa] = agora;
-    const atual = ORDEM_ETAPAS.indexOf(etapa);
-    const anterior = ORDEM_ETAPAS.indexOf(leadData.etapaFunil || 'contato');
-    if (atual > anterior) leadData.etapaFunil = etapa;
-}
-
-// Estágio MAIS AVANÇADO que o lead alcançou, derivado dos campos do leadData.
-// Funciona tanto para leads do agente quanto do fluxo legado (que não carimba etapas).
-function estagioDoLead(l) {
-    if (!l) return 'contato';
-    if (l.finalizado) return 'finalizado';
-    if (l.corPreferencia) return 'cor';
-    if (l.tecnica) return 'tecnica';
-    if (l.modeloEscolhido) return 'modelo';
-    if (l.quantidade && l.usoEvento) return 'qualificando';
-    return 'contato';
-}
-
 // =============================================================
 //  DEFINIÇÃO DAS FERRAMENTAS (schema OpenAI)
 // =============================================================
@@ -68,7 +36,7 @@ const TOOLS = [
         type: 'function',
         function: {
             name: 'registrar_dados',
-            description: 'Salva/atualiza os dados do lead conforme o cliente informa. Chame sempre que o cliente fornecer ou mudar qualquer informação (nome, quantidade, finalidade, prazo, modelo, arte, técnica, regulador, cor, material). Só inclua os campos realmente informados nesta mensagem.',
+            description: 'Salva/atualiza os dados do lead conforme o cliente informa. Chame sempre que o cliente fornecer OU MUDAR qualquer informação (nome, quantidade, finalidade, prazo, modelo, arte, técnica, regulador, cor, material). Se o cliente trocar uma escolha já registrada (ex.: "na verdade prefiro o trucker"), chame de novo com o novo valor — a última escolha vence; nunca apenas confirme a troca por texto sem registrar. Só inclua os campos realmente informados nesta mensagem.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -311,7 +279,7 @@ const EXECUTORES = {
 
     async iniciar_novo_pedido(args, ctx) {
         const { leadData } = ctx;
-        const nome = leadData.nome; // preserva a identidade do cliente
+        // O nome NÃO entra na lista de limpeza — preserva a identidade do cliente.
         const limpar = [
             'quantidade', 'usoEvento', 'prazoRecebimento', 'modeloEscolhido', 'tipoChapeu',
             'material', 'temArte', 'quandoEnviaArte', 'tecnica', 'tipoRegulador', 'corPreferencia',
@@ -375,12 +343,23 @@ function estadoResumido(l) {
 
 // =============================================================
 //  LOOP PRINCIPAL DO AGENTE
-//  Retorna { resposta, toolsChamadas, leadData }.
-//  `resposta` é o texto a enviar ao cliente (index.js faz o envio).
-//  Fotos/mockup/transferência já foram enviados pelas ferramentas.
+//  criar({ llm, montarPrompt, modelo }) → { rodarAgente }
+//    llm          porta Llm (chat-completion com retry embutido)
+//    montarPrompt (leadData, contexto) → prompt de sistema do agente
+//    modelo       modelo de chat (padrão gpt-4o: os evals mostraram que o
+//                 gpt-4o-mini é instável nas ferramentas terminais)
+//  rodarAgente retorna { resposta, toolsChamadas, leadData }.
+//  Fotos/mockup/transferência já foram enviados pelas ferramentas (io).
 // =============================================================
-async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, contexto = {}, agora = null }) {
-    const ctx = { leadData, io, chatId, agora: agora || obterAgoraISO() };
+function criar({ llm, montarPrompt, modelo = 'gpt-4o' }) {
+    async function rodarAgente(args) {
+        return executarTurnoDoAgente({ llm, montarPrompt, modelo, ...args });
+    }
+    return { rodarAgente };
+}
+
+async function executarTurnoDoAgente({ llm, montarPrompt, modelo, leadData, mensagemCliente, io, chatId, contexto = {}, agora = null }) {
+    const ctx = { leadData, io, chatId, agora: agora || new Date().toISOString() };
     marcarEtapa(leadData, 'contato', ctx.agora);
 
     const historico = (leadData.conversationHistory || []).slice(-30).map(h => ({
@@ -397,7 +376,7 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
         : mensagemCliente;
 
     const messages = [
-        { role: 'system', content: promptAgente(leadData, contexto) },
+        { role: 'system', content: montarPrompt(leadData, contexto) },
         ...historico,
         { role: 'user', content: conteudoUsuario }
     ];
@@ -406,8 +385,8 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
     let resposta = '';
 
     for (let i = 0; i < MAX_ITERACOES; i++) {
-        const completion = await criarCompletionComRetry(openai, {
-            model: MODELO_IA,
+        const completion = await llm.completar({
+            model: modelo,
             messages,
             tools: TOOLS,
             tool_choice: 'auto',
@@ -432,7 +411,7 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
 
         for (const chamada of chamadas) {
             const nome = chamada.function?.name;
-            let args = {};
+            let args;
             try { args = JSON.parse(chamada.function?.arguments || '{}'); } catch (_) { args = {}; }
             let resultado;
             try {
@@ -463,29 +442,4 @@ async function rodarAgente({ openai, leadData, mensagemCliente, io, chatId, cont
     return { resposta, toolsChamadas, leadData };
 }
 
-// Chamada à OpenAI com retry/backoff em 429 (rate limit) e erros transitórios 5xx.
-async function criarCompletionComRetry(openai, params, tentativas = 4) {
-    let espera = 800;
-    for (let i = 0; ; i++) {
-        try {
-            return await openai.chat.completions.create(params);
-        } catch (e) {
-            const status = e.status || e.response?.status;
-            const transitorio = status === 429 || (status >= 500 && status < 600);
-            if (transitorio && i < tentativas - 1) {
-                console.warn(`⏳ OpenAI ${status} — retry em ${espera}ms (tentativa ${i + 1}/${tentativas})`);
-                await new Promise(r => setTimeout(r, espera));
-                espera *= 2;
-                continue;
-            }
-            throw e;
-        }
-    }
-}
-
-function obterAgoraISO() {
-    // new Date() sem args é permitido em runtime normal (a restrição é só dos scripts de workflow)
-    return new Date().toISOString();
-}
-
-module.exports = { rodarAgente, TOOLS, EXECUTORES, marcarEtapa, estagioDoLead, ORDEM_ETAPAS, ETAPAS_FUNIL, estadoResumido };
+module.exports = { criar, TOOLS, EXECUTORES, estadoResumido };

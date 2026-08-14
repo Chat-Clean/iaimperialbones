@@ -12,7 +12,9 @@
 // =============================================================
 require('dotenv').config();
 const OpenAI = require('openai');
-const { rodarAgente } = require('../agente');
+const ClienteOpenAI = require('../src/infrastructure/openai/ClienteOpenAI');
+const AgenteDeVendas = require('../src/application/agente/AgenteDeVendas');
+const { promptAgente } = require('../src/infrastructure/openai/prompts');
 const { criarIoMock } = require('./io-mock');
 const { scenarios } = require('./scenarios');
 
@@ -24,6 +26,11 @@ if (!process.env.OPENAI_API_KEY) {
     process.exit(2);
 }
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const agente = AgenteDeVendas.criar({
+    llm: ClienteOpenAI.criar({ cliente: openai }),
+    montarPrompt: promptAgente,
+    modelo: process.env.AGENT_MODEL || 'gpt-4o'
+});
 
 async function rodarCenario(cenario) {
     const { io, log } = criarIoMock();
@@ -43,8 +50,8 @@ async function rodarCenario(cenario) {
             if (t.analiseImagem) contexto.analiseImagem = t.analiseImagem;
         }
 
-        const { resposta, toolsChamadas } = await rodarAgente({
-            openai, leadData, mensagemCliente: texto, io, chatId: CHAT_ID, contexto,
+        const { resposta, toolsChamadas } = await agente.rodarAgente({
+            leadData, mensagemCliente: texto, io, chatId: CHAT_ID, contexto,
             agora: '2026-07-21T12:00:00.000Z'
         });
 

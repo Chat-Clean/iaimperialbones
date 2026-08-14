@@ -1,4 +1,5 @@
 node_modules/
+coverage/
 .env
 .env.*.bak
 database.json
@@ -11,3 +12,5 @@ find_*.py
 documento_clique_massa_webhook.html
 prints/
 assets/mockups/
+# Resultados das simulações de persona (transcrições + ids da conta OpenAI nos erros)
+evals/sim-resultados.jsonl

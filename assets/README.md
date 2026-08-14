@@ -1,4 +1,4 @@
-# 📸 Imagens dos Produtos — Imperial Bonés
+﻿# 📸 Imagens dos Produtos — Imperial Bonés
 
 ## Estrutura de Pastas
 
@@ -12,7 +12,7 @@ prova-social/  → prints de avaliações/depoimentos
 
 ## 📂 modelos/ (produtos que o bot envia)
 
-Ligados no `data.js` (campo `arquivo` de cada modelo):
+Ligados no `src/domain/catalogo/Catalogo.js` (campo `arquivo` de cada modelo):
 ```
 americano.png        → IB_SNAP (Snapback / Americano)
 trucker.png          → IB_TRUCK
@@ -67,7 +67,7 @@ metalica-tipo2.jpeg
 
 ## 📂 cores-tecidos/ (1 cartela por tecido — .png)
 
-Nomes batem com as chaves de `TECIDOS_E_CORES` no `data.js`:
+Nomes batem com as chaves de `TECIDOS_E_CORES` no `src/domain/catalogo/Catalogo.js`:
 
 ```
 capa.png             (capa "Cores & Materiais")
@@ -86,3 +86,4 @@ tactel.jpeg          (linha básica — 100% poliéster)
 ---
 
 **IMPORTANTE:** Respeite EXATAMENTE os nomes dos arquivos (minúsculas com hífens)
+

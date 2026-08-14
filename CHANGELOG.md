@@ -1,5 +1,58 @@
 # Changelog — IA Imperial Bonés Personalizados
 
+## [2.0.0] — 2026-08-13
+
+### 🏛️ Arquitetura hexagonal (DDD) — sem mudança de comportamento da IA
+
+Reorganização estrutural completa. Prompts, catálogo, tabela de preços e regras
+de negócio foram preservados exatamente como estavam; o que mudou foi **onde**
+cada coisa vive e como as peças se conectam.
+
+- **`index.js`**: de ~1450 para ~110 linhas — agora só `montar()` + `iniciar()`.
+- **`src/domain/`** (puro, sem I/O): `catalogo/Catalogo.js` (ex-`data.js`),
+  `catalogo/Recomendacao.js` (ex-`catalogo-helpers.js`),
+  `orcamento/MotorDeOrcamento.js` (ex-`orcamento.js`), `atendimento/Funil.js`,
+  `atendimento/MontadorDeResumo.js`, `mensageria/` (objetos de fronteira).
+- **`src/application/`**: `portas/` (contratos), `agente/AgenteDeVendas.js`
+  (ex-`agente.js`, agora com LLM e prompt injetados),
+  `casos-de-uso/ProcessarMensagemRecebida.js` (o turno completo),
+  `followup/Reativacao.js`.
+- **`src/infrastructure/`**: canal ChatClean, ACL do webhook, adapters OpenAI,
+  repositórios Redis/memória (ex-`store.js`), servidor HTTP e proteções.
+- **`src/main/`**: `config.js` (validação com zod no boot) e `container.js`
+  (composition root — único lugar que conhece adapters concretos).
+- **Prompts versionados** em `src/infrastructure/openai/prompts/` — trocar a
+  versão em uso é uma linha, o que torna o rollback trivial.
+
+### 🛡️ Endurecimento para produção
+
+- **Fail-closed em produção**: com `NODE_ENV=production` o boot exige
+  `WEBHOOK_SECRET` (≥16 caracteres) e `CC_PUSH_URL`.
+- **`/analytics` protegida** por `ADMIN_KEY` (sem a chave, responde 503).
+- **Rate-limit por contato** (`RATE_LIMIT_POR_CONTATO`, padrão 20/min): contém
+  custo de OpenAI em caso de loop ou abuso.
+- **Shutdown gracioso**: para de aceitar conexões e espera os turnos em voo
+  terminarem — antes, um redeploy matava a conversa antes de persistir o estado.
+- **Fallback de instabilidade**: se a IA falhar (cota, timeout), o cliente recebe
+  um aviso humano em vez de silêncio.
+- **Privacidade do mockup**: o arquivo público deixou de ter o telefone do
+  cliente no nome (URL era adivinhável); agora usa nome opaco.
+- Autenticação do webhook por digest SHA-256 com `timingSafeEqual`.
+- Histórico da conversa truncado em todos os caminhos (era só em alguns).
+- Dockerfile: usuário não-root, `NODE_ENV=production` e `HEALTHCHECK`.
+
+### 🧪 Rede de segurança
+
+- **84 testes** (vitest): unidade do domínio, caracterização do ACL e um teste
+  dourado de integração que cobre o turno ponta a ponta nos **dois núcleos**
+  (fluxo legado e modo agente), com fakes no lugar das dependências externas.
+- **ESLint com as fronteiras da arquitetura** verificadas por seletor AST sobre
+  `require()` — domínio não importa infraestrutura nem lê `process.env`.
+- **CI no GitHub Actions** (lint + testes). Os evals ficam fora do CI: chamam a
+  API real e consomem crédito.
+- **Evals**: 28 cenários, incluindo variação de escrita (erros de digitação,
+  gírias, números por extenso), prazos, cores e logo.
+
 ## [1.4.0] — 2026-07-21
 
 ### 🔁 Fase 4 — Recompra (memória de cliente)

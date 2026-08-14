@@ -4,7 +4,7 @@
 //  index.js injeta o resultado no prompt para a IA apenas apresentar.
 // =============================================================
 
-const { TABELA_PRECOS } = require('./data');
+const { TABELA_PRECOS } = require('../catalogo/Catalogo');
 
 // Faixas de quantidade (índice 0..4) — casam com TABELA_PRECOS.faixas_padrao
 // 30-100 / 101-300 / 301-499 / 500-1000 / acima de 1000

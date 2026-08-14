@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "evals": "node evals/run.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "evals": "node evals/run.js",
+    "sim": "node evals/simulacao.js"
   },
   "keywords": [
     "whatsapp",
@@ -25,9 +29,17 @@
     "express": "^4.22.1",
     "form-data": "^4.0.5",
     "ioredis": "^5.11.1",
-    "openai": "^4.104.0"
+    "openai": "^4.104.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0",
+    "nodemon": "^3.0.2",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
