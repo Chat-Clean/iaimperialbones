@@ -76,4 +76,23 @@ describe('ACL — tradutor de payload do ChatClean', () => {
         expect(r.aceita).toBe(true);
         expect(r.tipo).toBe('sticker');
     });
+    // REGRESSÃO (bug de produção): SenderAlt com id de aparelho gerava um chatId
+    // com dígitos a mais → o push do ChatClean respondia 404.
+    it('SenderAlt com sufixo de dispositivo vira o telefone limpo', () => {
+        const r = traduzir({
+            message: { body: 'oi', type: 'chat', id: 'm9', raw: { Info: { SenderAlt: '558491756446:24@s.whatsapp.net', PushName: 'Cliente' } } }
+        });
+        expect(r.aceita).toBe(true);
+        expect(r.chatId).toBe('558491756446');
+    });
+
+    it('contact.number com sufixo também é limpo', () => {
+        const r = traduzir({ contact: { number: '558491756446:12@s.whatsapp.net', name: 'Ana' }, message: { body: 'oi', type: 'text' } });
+        expect(r.chatId).toBe('558491756446');
+    });
+
+    it('formato plano com sufixo também é limpo', () => {
+        const r = traduzir({ number: '558491756446:5@c.us', body: 'oi', type: 'text' });
+        expect(r.chatId).toBe('558491756446');
+    });
 });
